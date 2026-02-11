@@ -20,7 +20,7 @@ pub mod windows;
 
 pub use events::{ClipboardContentType, RawOsEvent};
 pub use window_manager::WindowManager;
-pub use windows::{ClipboardObserver, KeyboardObserver, WindowsObserver};
+pub use windows::{BrowserUrlObserver, ClipboardObserver, KeyboardObserver, WindowsObserver};
 
 use std::sync::mpsc;
 use thiserror::Error;

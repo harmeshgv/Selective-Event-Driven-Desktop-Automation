@@ -1,0 +1,1660 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SEDA Dashboard</title>
+  <style>
+    :root {
+      --bg-a: #f7f3eb;
+      --bg-b: #d9e6f2;
+      --card: rgba(255, 255, 255, 0.82);
+      --ink: #1f2b3a;
+      --ink-soft: #4f5f73;
+      --line: rgba(34, 51, 68, 0.16);
+      --ok: #1a8f4d;
+      --warn: #c06e1a;
+      --accent: #15538d;
+      --accent-strong: #0f3c64;
+      --danger: #9c2f2f;
+      --radius: 18px;
+      --shadow: 0 14px 42px rgba(31, 43, 58, 0.12);
+      --mono: "Consolas", "Lucida Console", monospace;
+      --sans: "Segoe UI Variable Text", "Trebuchet MS", "Lucida Sans Unicode", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 10%, rgba(21, 83, 141, 0.14), transparent 44%),
+        radial-gradient(circle at 88% 22%, rgba(192, 110, 26, 0.12), transparent 40%),
+        linear-gradient(140deg, var(--bg-a), var(--bg-b));
+      min-height: 100vh;
+    }
+
+    .layout {
+      width: min(1200px, 94vw);
+      margin: 28px auto 36px;
+      display: grid;
+      gap: 16px;
+      grid-template-columns: 1fr;
+    }
+
+    .hero {
+      padding: 20px;
+      border-radius: var(--radius);
+      background: var(--card);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      animation: settle 420ms ease-out both;
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.3rem, 2.2vw, 1.85rem);
+      letter-spacing: 0.02em;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--ink-soft);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      animation: settle 520ms ease-out both;
+    }
+
+    .controls {
+      grid-column: span 12;
+    }
+
+    .sessions {
+      grid-column: span 5;
+      min-height: 340px;
+    }
+
+    .graph {
+      grid-column: span 7;
+      min-height: 340px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 10px;
+    }
+
+    .tasks {
+      grid-column: span 12;
+      min-height: 280px;
+    }
+
+    .bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .metrics {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--ink-soft);
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.86);
+      font-weight: 600;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--warn);
+      box-shadow: 0 0 0 6px rgba(192, 110, 26, 0.14);
+      transition: all 180ms ease;
+    }
+
+    .dot.on {
+      background: var(--ok);
+      box-shadow: 0 0 0 6px rgba(26, 143, 77, 0.16);
+    }
+
+    .buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 1px solid transparent;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 120ms ease, opacity 120ms ease, background-color 120ms ease;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .btn-start {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-start:hover:not(:disabled) {
+      background: var(--accent-strong);
+    }
+
+    .btn-stop {
+      background: #fff;
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .btn-stop:hover:not(:disabled) {
+      background: rgba(156, 47, 47, 0.09);
+    }
+
+    .btn-refresh {
+      background: #fff;
+      border-color: var(--line);
+      color: var(--ink-soft);
+    }
+
+    .btn-clear {
+      background: #fff;
+      border-color: var(--warn);
+      color: var(--warn);
+    }
+
+    .btn-clear:hover:not(:disabled) {
+      background: rgba(192, 110, 26, 0.1);
+    }
+
+    .message {
+      margin-top: 8px;
+      min-height: 22px;
+      color: var(--ink-soft);
+      font-size: 0.92rem;
+    }
+
+    .message.error {
+      color: var(--danger);
+      font-weight: 600;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 1.04rem;
+      letter-spacing: 0.01em;
+    }
+
+    .meta {
+      color: var(--ink-soft);
+      font-size: 0.85rem;
+      font-family: var(--mono);
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.74);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 560px;
+    }
+
+    th, td {
+      text-align: left;
+      font-size: 0.85rem;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: rgba(245, 248, 252, 0.96);
+      z-index: 1;
+      color: var(--ink-soft);
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .graph-surface {
+      width: 100%;
+      height: 320px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(238, 246, 254, 0.5));
+      overflow: hidden;
+      position: relative;
+    }
+
+    #graphCanvas,
+    #graphSvg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: transparent;
+    }
+
+    #graphCanvas {
+      cursor: grab;
+      touch-action: none;
+    }
+
+    .graph-surface.is-2d #graphCanvas {
+      display: none;
+    }
+
+    .graph-surface.is-3d #graphSvg {
+      display: none;
+    }
+
+    .graph-hint {
+      margin-top: 8px;
+      color: var(--ink-soft);
+      font-size: 0.8rem;
+      font-family: var(--mono);
+    }
+
+    .graph-tools {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .btn-graph {
+      background: #fff;
+      border-color: var(--line);
+      color: var(--ink-soft);
+      padding: 6px 10px;
+      font-size: 0.78rem;
+      font-family: var(--mono);
+    }
+
+    .btn-graph.primary {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .btn-graph.mode-active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(21, 83, 141, 0.08);
+    }
+
+    #graphCard:fullscreen {
+      width: 100vw;
+      height: 100vh;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      border-radius: 0;
+      padding: 18px;
+      background: linear-gradient(165deg, #f4f8fb, #dde9f4);
+    }
+
+    #graphCard:fullscreen #graphSurface {
+      height: calc(100vh - 180px);
+      min-height: 360px;
+    }
+
+    @media (max-width: 980px) {
+      .sessions, .graph, .tasks, .controls {
+        grid-column: span 12;
+      }
+      table {
+        min-width: 480px;
+      }
+    }
+
+    @keyframes settle {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <main class="layout">
+    <section class="hero">
+      <h1>SEDA Collection Dashboard</h1>
+      <p>Control event collection, inspect captured tasks, and view the generated transition graph.</p>
+    </section>
+
+    <section class="grid">
+      <article class="card controls">
+        <div class="bar">
+          <div class="status-chip">
+            <span id="statusDot" class="dot"></span>
+            <span id="statusText">Stopped</span>
+          </div>
+          <div class="metrics">
+            <span class="chip">Total Actions: <strong id="totalActions">0</strong></span>
+            <span class="chip">Completed Sessions: <strong id="sessionCount">0</strong></span>
+            <span class="chip">Current Session Actions: <strong id="activeSessionCount">0</strong></span>
+          </div>
+          <div class="buttons">
+            <button id="startBtn" class="btn-start" type="button">Start Session</button>
+            <button id="stopBtn" class="btn-stop" type="button">Stop Session</button>
+            <button id="clearBtn" class="btn-clear" type="button">Clear Collected Data</button>
+            <button id="refreshBtn" class="btn-refresh" type="button">Refresh</button>
+          </div>
+        </div>
+        <div id="message" class="message"></div>
+      </article>
+
+      <article class="card sessions">
+        <div class="bar">
+          <h2>Start/Stop Sessions</h2>
+          <span class="meta" id="sessionMeta">No sessions yet</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Session</th>
+                <th>Started</th>
+                <th>Stopped</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="sessionsBody"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article id="graphCard" class="card graph">
+        <div class="bar">
+          <h2>Task Transition Graph</h2>
+          <div class="graph-tools">
+            <span class="meta" id="graphMeta">Nodes: 0 | Edges: 0 | Directed</span>
+            <button id="mode2dBtn" class="btn-graph mode-active" type="button">2D Flowchart</button>
+            <button id="mode3dBtn" class="btn-graph" type="button">3D Graph</button>
+            <button id="startReplayBtn" class="btn-graph primary" type="button">Start From First</button>
+            <button id="nextReplayBtn" class="btn-graph" type="button">Next</button>
+            <button id="playReplayBtn" class="btn-graph" type="button">Auto Play</button>
+            <button id="fullscreenGraphBtn" class="btn-graph" type="button">Fullscreen</button>
+          </div>
+        </div>
+        <div id="graphSurface" class="graph-surface is-2d">
+          <svg id="graphSvg" viewBox="0 0 960 520" preserveAspectRatio="xMidYMid meet" aria-label="2D task flowchart"></svg>
+          <canvas id="graphCanvas"></canvas>
+        </div>
+        <div id="graphControls" class="graph-hint">
+          2D flowchart mode | Arrows show direction left to right | Switch to 3D for orbit controls
+        </div>
+        <div id="replayInfo" class="graph-hint">
+          Replay: click "Start From First" then "Next" to verify captured flow order.
+        </div>
+      </article>
+
+      <article class="card tasks">
+        <div class="bar">
+          <h2>Recent Collected Tasks</h2>
+          <span class="meta" id="tasksMeta">Showing latest 120 actions</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Type</th>
+                <th>Source App</th>
+                <th>Target App</th>
+                <th>Website</th>
+                <th>Search Query</th>
+                <th>Search Engine</th>
+                <th>Duration (ms)</th>
+                <th>Session</th>
+              </tr>
+            </thead>
+            <tbody id="actionsBody"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const totalActionsEl = document.getElementById("totalActions");
+    const sessionCountEl = document.getElementById("sessionCount");
+    const activeSessionCountEl = document.getElementById("activeSessionCount");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const messageEl = document.getElementById("message");
+    const sessionsBody = document.getElementById("sessionsBody");
+    const actionsBody = document.getElementById("actionsBody");
+    const sessionMeta = document.getElementById("sessionMeta");
+    const graphMeta = document.getElementById("graphMeta");
+    const graphControls = document.getElementById("graphControls");
+    const replayInfo = document.getElementById("replayInfo");
+    const startReplayBtn = document.getElementById("startReplayBtn");
+    const nextReplayBtn = document.getElementById("nextReplayBtn");
+    const playReplayBtn = document.getElementById("playReplayBtn");
+    const fullscreenGraphBtn = document.getElementById("fullscreenGraphBtn");
+    const graphCard = document.getElementById("graphCard");
+    const graphSurface = document.getElementById("graphSurface");
+    const graphSvg = document.getElementById("graphSvg");
+    const canvas = document.getElementById("graphCanvas");
+    const mode2dBtn = document.getElementById("mode2dBtn");
+    const mode3dBtn = document.getElementById("mode3dBtn");
+    const svgNs = "http://www.w3.org/2000/svg";
+
+    let lastGraph = { nodes: [], edges: [] };
+    let latestStatus = null;
+    let refreshInProgress = false;
+    let actionInProgress = false;
+    let graphMode = "2d";
+    let replayHintMessage = 'Replay: click "Start From First" then "Next" to verify captured flow order.';
+    let hoveredNodeId = null;
+    let projectedNodeCache = [];
+    const nodePositionCache = new Map();
+    const graphView = {
+      yaw: -0.45,
+      pitch: 0.3,
+      distance: 640,
+      panX: 0,
+      panY: 0
+    };
+    const graphInteraction = {
+      active: false,
+      pointerId: null,
+      mode: "rotate",
+      lastX: 0,
+      lastY: 0
+    };
+    const replayState = {
+      steps: [],
+      index: -1,
+      playing: false,
+      timer: null
+    };
+
+    function toLocalTime(ms) {
+      if (!ms) return "-";
+      return new Date(ms).toLocaleString();
+    }
+
+    function shortSessionId(id) {
+      return id ? id.slice(0, 8) : "-";
+    }
+
+    function textOrDash(value) {
+      return value === null || value === undefined || value === "" ? "-" : value;
+    }
+
+    function truncateText(value, maxLen = 80) {
+      const text = String(textOrDash(value));
+      if (text.length <= maxLen) {
+        return text;
+      }
+      return `${text.slice(0, maxLen - 3)}...`;
+    }
+
+    function setMessage(message, isError = false) {
+      messageEl.textContent = message || "";
+      messageEl.classList.toggle("error", isError);
+    }
+
+    function toNodeId(action) {
+      if (action && action.node_id) {
+        return action.node_id;
+      }
+      const actionType = action?.action_type || "UNKNOWN_ACTION";
+      const sourceApp = action?.source_app || null;
+      const targetApp = action?.target_app || null;
+      const primaryApp = actionType === "COPY_TEXT"
+        ? (sourceApp || targetApp || "unknown")
+        : (targetApp || sourceApp || "unknown");
+      return `${actionType}::${primaryApp}`;
+    }
+
+    function getReplayCurrentStep() {
+      if (replayState.index < 0 || replayState.index >= replayState.steps.length) {
+        return null;
+      }
+      return replayState.steps[replayState.index];
+    }
+
+    function getReplayTransition() {
+      if (replayState.index <= 0 || replayState.index >= replayState.steps.length) {
+        return null;
+      }
+      const prev = replayState.steps[replayState.index - 1];
+      const current = replayState.steps[replayState.index];
+      if (!prev || !current) {
+        return null;
+      }
+      return {
+        from: prev.node_id,
+        to: current.node_id
+      };
+    }
+
+    async function callApi(url, options = {}) {
+      const response = await fetch(url, options);
+      const text = await response.text();
+      let payload = null;
+      try {
+        payload = text ? JSON.parse(text) : null;
+      } catch {
+        throw new Error(`Request failed: ${response.status}`);
+      }
+      if (!payload) {
+        throw new Error(`Empty response from ${url}`);
+      }
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.message || `Request failed: ${response.status}`);
+      }
+      return payload.data;
+    }
+
+    function syncControlButtons() {
+      const collecting = !!latestStatus?.collecting;
+      startBtn.disabled = actionInProgress || collecting;
+      stopBtn.disabled = actionInProgress || !collecting;
+      clearBtn.disabled = actionInProgress;
+      refreshBtn.disabled = actionInProgress || refreshInProgress;
+      startReplayBtn.disabled = actionInProgress || refreshInProgress;
+      nextReplayBtn.disabled = actionInProgress || refreshInProgress;
+      playReplayBtn.disabled = actionInProgress || refreshInProgress;
+    }
+
+    function renderStatus(snapshot) {
+      latestStatus = snapshot;
+      const isOn = !!snapshot.collecting;
+      statusDot.classList.toggle("on", isOn);
+      statusText.textContent = isOn ? "Collecting" : "Stopped";
+
+      totalActionsEl.textContent = String(snapshot.total_actions ?? 0);
+      const completed = snapshot.completed_sessions || [];
+      sessionCountEl.textContent = String(completed.length);
+      activeSessionCountEl.textContent = String(snapshot.active_session?.actions_collected ?? 0);
+
+      sessionMeta.textContent = completed.length
+        ? `Last session actions: ${completed[completed.length - 1].actions_collected}`
+        : "No sessions yet";
+      syncControlButtons();
+    }
+
+    function renderSessions(snapshot) {
+      const sessions = [...(snapshot.completed_sessions || [])].reverse();
+      sessionsBody.innerHTML = "";
+
+      if (!sessions.length) {
+        sessionsBody.innerHTML = '<tr><td colspan="4">No start/stop session completed yet.</td></tr>';
+        return;
+      }
+
+      for (const session of sessions) {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td><code>${shortSessionId(session.id)}</code></td>
+          <td>${toLocalTime(session.started_ms)}</td>
+          <td>${toLocalTime(session.stopped_ms)}</td>
+          <td>${session.actions_collected}</td>
+        `;
+        sessionsBody.appendChild(row);
+      }
+    }
+
+    function renderActions(actions) {
+      actionsBody.innerHTML = "";
+      if (!actions || !actions.length) {
+        actionsBody.innerHTML = '<tr><td colspan="9">No actions yet.</td></tr>';
+        return;
+      }
+
+      for (const action of actions) {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${toLocalTime(action.timestamp_ms)}</td>
+          <td>${textOrDash(action.action_type)}</td>
+          <td>${textOrDash(action.source_app)}</td>
+          <td>${textOrDash(action.target_app)}</td>
+          <td>${truncateText(action.website_url)}</td>
+          <td>${truncateText(action.search_query, 60)}</td>
+          <td>${textOrDash(action.search_engine)}</td>
+          <td>${textOrDash(action.duration_ms)}</td>
+          <td><code>${shortSessionId(action.session_id)}</code></td>
+        `;
+        actionsBody.appendChild(row);
+      }
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function getCanvasSize() {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.max(420, Math.floor(rect.width * ratio));
+      canvas.height = Math.max(260, Math.floor(rect.height * ratio));
+      return { w: canvas.width / ratio, h: canvas.height / ratio, ratio };
+    }
+
+    function shortNodeLabel(id) {
+      const [action, app] = String(id).split("::");
+      const actionText = (action || "").replaceAll("_", " ");
+      const raw = `${actionText} @ ${app || "unknown"}`;
+      return raw.length > 28 ? `${raw.slice(0, 25)}...` : raw;
+    }
+
+    function splitNodeLabel(id) {
+      const [actionRaw, appRaw] = String(id).split("::");
+      return {
+        action: truncateText((actionRaw || "UNKNOWN_ACTION").replaceAll("_", " "), 24),
+        app: truncateText(appRaw || "unknown", 28),
+      };
+    }
+
+    function createSvgElement(tag, attrs = {}) {
+      const element = document.createElementNS(svgNs, tag);
+      for (const [name, value] of Object.entries(attrs)) {
+        element.setAttribute(name, String(value));
+      }
+      return element;
+    }
+
+    function getGraphSurfaceSize() {
+      const rect = graphSurface.getBoundingClientRect();
+      return {
+        w: Math.max(420, Math.floor(rect.width || 420)),
+        h: Math.max(260, Math.floor(rect.height || 320)),
+      };
+    }
+
+    function hashString(input) {
+      let hash = 2166136261;
+      for (let i = 0; i < input.length; i += 1) {
+        hash ^= input.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return hash >>> 0;
+    }
+
+    function nodeUnitVector(id) {
+      const hash = hashString(String(id));
+      const theta = ((hash & 0xffff) / 0xffff) * Math.PI * 2;
+      const u = (((hash >>> 16) & 0xffff) / 0xffff) * 2 - 1;
+      const phi = Math.acos(clamp(u, -1, 1));
+      const sinPhi = Math.sin(phi);
+      return {
+        x: sinPhi * Math.cos(theta),
+        y: Math.cos(phi),
+        z: sinPhi * Math.sin(theta),
+      };
+    }
+
+    function getNodeWorldPosition(nodeId, radius) {
+      const cached = nodePositionCache.get(nodeId);
+      if (cached) {
+        return {
+          x: cached.unit.x * radius,
+          y: cached.unit.y * radius,
+          z: cached.unit.z * radius,
+        };
+      }
+
+      const unit = nodeUnitVector(nodeId);
+      nodePositionCache.set(nodeId, { unit });
+      return {
+        x: unit.x * radius,
+        y: unit.y * radius,
+        z: unit.z * radius,
+      };
+    }
+
+    function rotatePoint(point) {
+      const cosYaw = Math.cos(graphView.yaw);
+      const sinYaw = Math.sin(graphView.yaw);
+      const xYaw = point.x * cosYaw - point.z * sinYaw;
+      const zYaw = point.x * sinYaw + point.z * cosYaw;
+
+      const cosPitch = Math.cos(graphView.pitch);
+      const sinPitch = Math.sin(graphView.pitch);
+      const yPitch = point.y * cosPitch - zYaw * sinPitch;
+      const zPitch = point.y * sinPitch + zYaw * cosPitch;
+
+      return { x: xYaw, y: yPitch, z: zPitch };
+    }
+
+    function projectPoint(rotated, size) {
+      const safeDepth = Math.max(120, graphView.distance - rotated.z);
+      const scale = graphView.distance / safeDepth;
+      return {
+        x: rotated.x * scale + size.w / 2 + graphView.panX,
+        y: rotated.y * scale + size.h / 2 + graphView.panY,
+        depth: rotated.z,
+        scale,
+      };
+    }
+
+    function drawDirectedEdge(ctx, from, to, width, alpha, color = "21, 83, 141") {
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 2) {
+        return;
+      }
+
+      const ux = dx / len;
+      const uy = dy / len;
+      const startOffset = from.screenRadius + 3;
+      const endOffset = to.screenRadius + 9;
+
+      const startX = from.x + ux * startOffset;
+      const startY = from.y + uy * startOffset;
+      const endX = to.x - ux * endOffset;
+      const endY = to.y - uy * endOffset;
+
+      ctx.strokeStyle = `rgba(${color}, ${alpha})`;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+
+      const arrowSize = 6 + width * 0.8;
+      const leftX = endX - ux * arrowSize - uy * (arrowSize * 0.55);
+      const leftY = endY - uy * arrowSize + ux * (arrowSize * 0.55);
+      const rightX = endX - ux * arrowSize + uy * (arrowSize * 0.55);
+      const rightY = endY - uy * arrowSize - ux * (arrowSize * 0.55);
+
+      ctx.fillStyle = `rgba(${color}, ${Math.min(1, alpha + 0.08)})`;
+      ctx.beginPath();
+      ctx.moveTo(endX, endY);
+      ctx.lineTo(leftX, leftY);
+      ctx.lineTo(rightX, rightY);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function buildFlowLevels(nodeIds, edges) {
+      const outgoing = new Map(nodeIds.map((id) => [id, []]));
+      const incomingCount = new Map(nodeIds.map((id) => [id, 0]));
+
+      for (const edge of edges) {
+        if (!outgoing.has(edge.from) || !outgoing.has(edge.to)) {
+          continue;
+        }
+        outgoing.get(edge.from).push(edge.to);
+        incomingCount.set(edge.to, (incomingCount.get(edge.to) || 0) + 1);
+      }
+
+      let seeds = nodeIds.filter((id) => (incomingCount.get(id) || 0) === 0);
+      if (!seeds.length) {
+        seeds = [...nodeIds]
+          .sort((a, b) => (outgoing.get(b)?.length || 0) - (outgoing.get(a)?.length || 0))
+          .slice(0, Math.max(1, Math.min(3, nodeIds.length)));
+      }
+
+      const levels = new Map();
+      const visited = new Set();
+      const queue = [];
+
+      for (const seed of seeds) {
+        levels.set(seed, 0);
+        visited.add(seed);
+        queue.push(seed);
+      }
+
+      while (queue.length) {
+        const current = queue.shift();
+        const currentLevel = levels.get(current) || 0;
+        for (const next of outgoing.get(current) || []) {
+          const candidate = currentLevel + 1;
+          const existing = levels.get(next);
+          if (existing === undefined || candidate > existing) {
+            levels.set(next, candidate);
+          }
+          if (!visited.has(next)) {
+            visited.add(next);
+            queue.push(next);
+          }
+        }
+      }
+
+      let fallbackLevel = levels.size ? Math.max(...levels.values()) + 1 : 0;
+      for (const nodeId of nodeIds) {
+        if (!levels.has(nodeId)) {
+          levels.set(nodeId, fallbackLevel);
+          fallbackLevel += 1;
+        }
+      }
+
+      return levels;
+    }
+
+    function drawGraph2d(graph) {
+      const nodes = graph.nodes || [];
+      const edges = graph.edges || [];
+      const replayCurrentStep = getReplayCurrentStep();
+      const replayTransition = getReplayTransition();
+      const size = getGraphSurfaceSize();
+
+      graphSvg.innerHTML = "";
+      graphSvg.setAttribute("viewBox", `0 0 ${size.w} ${size.h}`);
+      projectedNodeCache = [];
+      hoveredNodeId = null;
+      graphMeta.textContent = `Nodes: ${nodes.length} | Edges: ${edges.length} | Directed | 2D Flowchart`;
+
+      if (!nodes.length) {
+        const message = createSvgElement("text", {
+          x: 20,
+          y: Math.floor(size.h / 2),
+          fill: "#64748b",
+          "font-size": 14,
+          "font-family": "Consolas, Lucida Console, monospace",
+        });
+        message.textContent = "No transition edges yet. Collect more events.";
+        graphSvg.appendChild(message);
+        graphControls.textContent = "2D flowchart mode | Arrows show direction left to right | Switch to 3D for orbit controls";
+        replayInfo.textContent = replayHintMessage;
+        return;
+      }
+
+      const nodeIds = nodes.map((node) => node.id);
+      const levels = buildFlowLevels(nodeIds, edges);
+      const maxLevel = Math.max(0, ...levels.values());
+      const columnCount = maxLevel + 1;
+      const marginX = 56;
+      const marginY = 20;
+      const stepX = columnCount > 1 ? (size.w - marginX * 2) / (columnCount - 1) : 0;
+      const nodeWidth = columnCount > 1 ? clamp(stepX * 0.68, 130, 220) : clamp(size.w * 0.42, 150, 240);
+      const nodeHeight = 52;
+
+      const levelBuckets = new Map();
+      for (const nodeId of nodeIds) {
+        const level = levels.get(nodeId) || 0;
+        if (!levelBuckets.has(level)) {
+          levelBuckets.set(level, []);
+        }
+        levelBuckets.get(level).push(nodeId);
+      }
+      for (const bucket of levelBuckets.values()) {
+        bucket.sort();
+      }
+
+      const nodePositions = new Map();
+      for (let level = 0; level <= maxLevel; level += 1) {
+        const ids = levelBuckets.get(level) || [];
+        if (!ids.length) {
+          continue;
+        }
+        const centerX = columnCount > 1 ? marginX + level * stepX : size.w / 2;
+        const spacingY = (size.h - marginY * 2) / (ids.length + 1);
+        ids.forEach((id, idx) => {
+          const centerY = marginY + spacingY * (idx + 1);
+          nodePositions.set(id, {
+            x: centerX - nodeWidth / 2,
+            y: centerY - nodeHeight / 2,
+            width: nodeWidth,
+            height: nodeHeight,
+            centerX,
+            centerY,
+          });
+        });
+      }
+
+      const defs = createSvgElement("defs");
+      const arrow = createSvgElement("marker", {
+        id: "graphArrow",
+        viewBox: "0 0 10 10",
+        refX: "8.6",
+        refY: "5",
+        markerWidth: "7",
+        markerHeight: "7",
+        orient: "auto-start-reverse",
+      });
+      arrow.appendChild(createSvgElement("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: "#15538d" }));
+
+      const replayArrow = createSvgElement("marker", {
+        id: "graphArrowReplay",
+        viewBox: "0 0 10 10",
+        refX: "8.6",
+        refY: "5",
+        markerWidth: "7",
+        markerHeight: "7",
+        orient: "auto-start-reverse",
+      });
+      replayArrow.appendChild(createSvgElement("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: "#c06e1a" }));
+
+      defs.appendChild(arrow);
+      defs.appendChild(replayArrow);
+      graphSvg.appendChild(defs);
+
+      const edgeLayer = createSvgElement("g", {
+        fill: "none",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+      });
+      const edgeLabelLayer = createSvgElement("g");
+      const maxFreq = Math.max(1, ...edges.map((edge) => edge.frequency || 1));
+      const showFreqLabels = edges.length <= 90;
+
+      for (const edge of edges) {
+        const from = nodePositions.get(edge.from);
+        const to = nodePositions.get(edge.to);
+        if (!from || !to) {
+          continue;
+        }
+
+        const strength = (edge.frequency || 1) / maxFreq;
+        const isReplayEdge = !!(
+          replayTransition
+          && replayTransition.from === edge.from
+          && replayTransition.to === edge.to
+        );
+
+        let startX;
+        let startY;
+        let endX;
+        let endY;
+        let pathData;
+
+        if (to.centerX > from.centerX) {
+          startX = from.x + from.width;
+          startY = from.centerY;
+          endX = to.x;
+          endY = to.centerY;
+          const curve = Math.max(32, (endX - startX) * 0.45);
+          pathData = `M ${startX} ${startY} C ${startX + curve} ${startY}, ${endX - curve} ${endY}, ${endX} ${endY}`;
+        } else if (to.centerX < from.centerX) {
+          startX = from.x;
+          startY = from.centerY;
+          endX = to.x + to.width;
+          endY = to.centerY;
+          const bendY = Math.min(startY, endY) - (34 + Math.abs(endX - startX) * 0.08);
+          const midX = (startX + endX) / 2;
+          pathData = `M ${startX} ${startY} C ${startX - 42} ${startY}, ${startX - 42} ${bendY}, ${midX} ${bendY} C ${endX + 42} ${bendY}, ${endX + 42} ${endY}, ${endX} ${endY}`;
+        } else {
+          startX = from.x + from.width;
+          startY = from.centerY;
+          endX = to.x + to.width;
+          endY = to.centerY;
+          const offset = 46;
+          pathData = `M ${startX} ${startY} C ${startX + offset} ${startY}, ${endX + offset} ${endY}, ${endX} ${endY}`;
+        }
+
+        const path = createSvgElement("path", {
+          d: pathData,
+          stroke: isReplayEdge ? "#c06e1a" : "#15538d",
+          "stroke-width": isReplayEdge ? (3.8 + strength * 2.8).toFixed(2) : (1.2 + strength * 2.6).toFixed(2),
+          opacity: isReplayEdge ? "0.96" : (0.28 + strength * 0.55).toFixed(2),
+          "marker-end": isReplayEdge ? "url(#graphArrowReplay)" : "url(#graphArrow)",
+        });
+        edgeLayer.appendChild(path);
+
+        if (showFreqLabels) {
+          const edgeLabel = createSvgElement("text", {
+            x: ((startX + endX) / 2).toFixed(1),
+            y: (((startY + endY) / 2) - 5).toFixed(1),
+            "text-anchor": "middle",
+            fill: "#4f5f73",
+            "font-size": 10,
+            "font-family": "Consolas, Lucida Console, monospace",
+          });
+          edgeLabel.textContent = `x${edge.frequency || 1}`;
+          edgeLabelLayer.appendChild(edgeLabel);
+        }
+      }
+
+      graphSvg.appendChild(edgeLayer);
+      graphSvg.appendChild(edgeLabelLayer);
+
+      const nodeLayer = createSvgElement("g");
+      const orderedNodeIds = [...nodeIds].sort((a, b) => {
+        const levelDelta = (levels.get(a) || 0) - (levels.get(b) || 0);
+        if (levelDelta !== 0) {
+          return levelDelta;
+        }
+        return a.localeCompare(b);
+      });
+
+      for (const nodeId of orderedNodeIds) {
+        const node = nodePositions.get(nodeId);
+        if (!node) {
+          continue;
+        }
+
+        const isReplayCurrent = replayCurrentStep && nodeId === replayCurrentStep.node_id;
+        const isReplayPrevious = replayTransition && nodeId === replayTransition.from;
+        const label = splitNodeLabel(nodeId);
+
+        const fill = isReplayCurrent ? "#fff1df" : (isReplayPrevious ? "#e8f1fb" : "#ecf4fb");
+        const stroke = isReplayCurrent ? "#c06e1a" : (isReplayPrevious ? "#3a7fbc" : "#2f6f9f");
+
+        const group = createSvgElement("g", { transform: `translate(${node.x.toFixed(1)} ${node.y.toFixed(1)})` });
+        const rect = createSvgElement("rect", {
+          x: 0,
+          y: 0,
+          width: node.width.toFixed(1),
+          height: node.height,
+          rx: 10,
+          ry: 10,
+          fill,
+          stroke,
+          "stroke-width": isReplayCurrent ? 2.3 : 1.4,
+        });
+        const actionLine = createSvgElement("text", {
+          x: 10,
+          y: 21,
+          fill: "#1f2b3a",
+          "font-size": 12,
+          "font-family": "Consolas, Lucida Console, monospace",
+          "font-weight": 700,
+        });
+        actionLine.textContent = label.action;
+        const appLine = createSvgElement("text", {
+          x: 10,
+          y: 38,
+          fill: "#4f5f73",
+          "font-size": 11,
+          "font-family": "Consolas, Lucida Console, monospace",
+        });
+        appLine.textContent = `@ ${label.app}`;
+        const title = createSvgElement("title");
+        title.textContent = nodeId;
+
+        group.appendChild(rect);
+        group.appendChild(actionLine);
+        group.appendChild(appLine);
+        group.appendChild(title);
+        nodeLayer.appendChild(group);
+      }
+
+      graphSvg.appendChild(nodeLayer);
+
+      if (replayCurrentStep) {
+        replayInfo.textContent = `Replay step ${replayState.index + 1}/${replayState.steps.length}: ${replayCurrentStep.action_type} at ${toLocalTime(replayCurrentStep.timestamp_ms)}`;
+      } else {
+        replayInfo.textContent = replayHintMessage;
+      }
+
+      graphControls.textContent = "2D flowchart mode | Arrows show direction left to right | Switch to 3D for orbit controls";
+    }
+
+    function drawGraph3d(graph) {
+      const ctx = canvas.getContext("2d");
+      const size = getCanvasSize();
+      ctx.setTransform(size.ratio, 0, 0, size.ratio, 0, 0);
+      ctx.clearRect(0, 0, size.w, size.h);
+
+      const nodes = graph.nodes || [];
+      const edges = graph.edges || [];
+      graphMeta.textContent = `Nodes: ${nodes.length} | Edges: ${edges.length} | Directed | 3D`;
+      const replayCurrentStep = getReplayCurrentStep();
+      const replayTransition = getReplayTransition();
+
+      if (!nodes.length) {
+        projectedNodeCache = [];
+        ctx.fillStyle = "#64748b";
+        ctx.font = '14px "Consolas", "Lucida Console", monospace';
+        ctx.fillText("No transition edges yet. Collect more events.", 20, size.h / 2);
+        replayInfo.textContent = replayHintMessage;
+        return;
+      }
+
+      const radius = Math.max(92, Math.min(size.w, size.h) * 0.28);
+      const projectedById = new Map();
+      const projectedNodes = [];
+
+      for (const node of nodes) {
+        const world = getNodeWorldPosition(node.id, radius);
+        const rotated = rotatePoint(world);
+        const projected = projectPoint(rotated, size);
+        const screenRadius = clamp(4 + projected.scale * 4.6, 4, 14);
+
+        const preparedNode = {
+          id: node.id,
+          x: projected.x,
+          y: projected.y,
+          depth: projected.depth,
+          scale: projected.scale,
+          screenRadius,
+        };
+        projectedById.set(node.id, preparedNode);
+        projectedNodes.push(preparedNode);
+      }
+
+      if (hoveredNodeId && !projectedById.has(hoveredNodeId)) {
+        hoveredNodeId = null;
+      }
+
+      const maxFreq = Math.max(1, ...edges.map((edge) => edge.frequency || 1));
+      const preparedEdges = [];
+      for (const edge of edges) {
+        const from = projectedById.get(edge.from);
+        const to = projectedById.get(edge.to);
+        if (!from || !to) {
+          continue;
+        }
+        const strength = (edge.frequency || 1) / maxFreq;
+        preparedEdges.push({
+          from,
+          to,
+          depth: (from.depth + to.depth) / 2,
+          width: 1 + strength * 4.8,
+          alpha: 0.2 + strength * 0.6,
+          isReplayEdge: !!(
+            replayTransition
+            && replayTransition.from === from.id
+            && replayTransition.to === to.id
+          ),
+        });
+      }
+
+      preparedEdges.sort((a, b) => a.depth - b.depth);
+      for (const edge of preparedEdges) {
+        const width = edge.isReplayEdge ? edge.width + 2.3 : edge.width;
+        const alpha = edge.isReplayEdge ? Math.min(0.95, edge.alpha + 0.32) : edge.alpha;
+        const color = edge.isReplayEdge ? "192, 110, 26" : "21, 83, 141";
+        drawDirectedEdge(ctx, edge.from, edge.to, width, alpha, color);
+      }
+
+      projectedNodes.sort((a, b) => a.depth - b.depth);
+      projectedNodeCache = projectedNodes.map((node) => ({
+        id: node.id,
+        x: node.x,
+        y: node.y,
+        radius: node.screenRadius,
+      }));
+
+      const showAllLabels = nodes.length <= 20;
+
+      for (const node of projectedNodes) {
+        const isHovered = node.id === hoveredNodeId;
+        const isReplayCurrent = replayCurrentStep && node.id === replayCurrentStep.node_id;
+        const isReplayPrevious = replayTransition && node.id === replayTransition.from;
+
+        if (isReplayCurrent) {
+          ctx.fillStyle = "#c06e1a";
+        } else if (isReplayPrevious) {
+          ctx.fillStyle = "#3a7fbc";
+        } else {
+          ctx.fillStyle = isHovered ? "#c06e1a" : "#15538d";
+        }
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.screenRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (showAllLabels || isHovered || isReplayCurrent) {
+          ctx.fillStyle = "#1f2b3a";
+          ctx.font = (isHovered || isReplayCurrent)
+            ? '12px "Consolas", "Lucida Console", monospace'
+            : '11px "Consolas", "Lucida Console", monospace';
+          ctx.fillText(shortNodeLabel(node.id), node.x + node.screenRadius + 6, node.y + 4);
+        }
+      }
+
+      if (replayCurrentStep) {
+        replayInfo.textContent = `Replay step ${replayState.index + 1}/${replayState.steps.length}: ${replayCurrentStep.action_type} at ${toLocalTime(replayCurrentStep.timestamp_ms)}`;
+      } else {
+        replayInfo.textContent = replayHintMessage;
+      }
+
+      if (hoveredNodeId) {
+        graphControls.textContent = `Selected: ${shortNodeLabel(hoveredNodeId)} | Drag rotate | Shift+Drag pan | Wheel zoom`;
+      } else {
+        graphControls.textContent = "Drag to rotate | Shift+Drag to pan | Wheel to zoom | Double-click to reset camera";
+      }
+    }
+
+    function drawGraph(graph) {
+      if (graphMode === "2d") {
+        drawGraph2d(graph);
+      } else {
+        drawGraph3d(graph);
+      }
+    }
+
+    function setGraphMode(nextMode) {
+      const normalized = nextMode === "3d" ? "3d" : "2d";
+      graphMode = normalized;
+      graphSurface.classList.toggle("is-2d", normalized === "2d");
+      graphSurface.classList.toggle("is-3d", normalized === "3d");
+      mode2dBtn.classList.toggle("mode-active", normalized === "2d");
+      mode3dBtn.classList.toggle("mode-active", normalized === "3d");
+      hoveredNodeId = null;
+
+      if (normalized === "3d") {
+        updateGraphCursor();
+      } else {
+        graphInteraction.active = false;
+        graphInteraction.pointerId = null;
+        canvas.style.cursor = "default";
+      }
+
+      drawGraph(lastGraph);
+    }
+
+    async function refreshStatus() {
+      const status = await callApi("/api/dashboard/status");
+      renderStatus(status);
+      renderSessions(status);
+    }
+
+    async function refreshActions() {
+      const actions = await callApi("/api/dashboard/actions?limit=120");
+      renderActions(actions);
+    }
+
+    async function refreshGraph() {
+      const graph = await callApi("/api/dashboard/graph?min_frequency=1");
+      lastGraph = graph || { nodes: [], edges: [] };
+      drawGraph(lastGraph);
+    }
+
+    async function loadReplaySteps() {
+      const flow = await callApi("/api/dashboard/flow?limit=2500");
+      replayState.steps = (flow || []).map((action) => ({
+        ...action,
+        node_id: toNodeId(action)
+      }));
+      if (replayState.index >= replayState.steps.length) {
+        replayState.index = replayState.steps.length - 1;
+      }
+    }
+
+    function stopReplayAutoPlay() {
+      replayState.playing = false;
+      if (replayState.timer) {
+        clearInterval(replayState.timer);
+        replayState.timer = null;
+      }
+      playReplayBtn.textContent = "Auto Play";
+    }
+
+    function setReplayIndex(index) {
+      if (!replayState.steps.length) {
+        replayState.index = -1;
+        drawGraph(lastGraph);
+        return;
+      }
+      replayState.index = clamp(index, 0, replayState.steps.length - 1);
+      drawGraph(lastGraph);
+    }
+
+    async function startReplayFromFirst() {
+      stopReplayAutoPlay();
+      await loadReplaySteps();
+
+      if (!replayState.steps.length) {
+        replayState.index = -1;
+        replayHintMessage = "Replay unavailable: no actions collected yet.";
+        drawGraph(lastGraph);
+        return;
+      }
+
+      replayHintMessage = 'Replay: click "Next" to move forward through captured actions.';
+      setReplayIndex(0);
+      setMessage("Replay positioned at first collected action.");
+    }
+
+    async function moveReplayNext() {
+      if (!replayState.steps.length) {
+        await startReplayFromFirst();
+        return;
+      }
+
+      if (replayState.index >= replayState.steps.length - 1) {
+        stopReplayAutoPlay();
+        replayHintMessage = "Replay reached latest collected action.";
+        setMessage("Replay reached the latest collected action.");
+        drawGraph(lastGraph);
+        return;
+      }
+
+      setReplayIndex(replayState.index + 1);
+    }
+
+    async function toggleReplayAutoPlay() {
+      if (replayState.playing) {
+        stopReplayAutoPlay();
+        return;
+      }
+
+      if (!replayState.steps.length) {
+        await startReplayFromFirst();
+      }
+
+      if (!replayState.steps.length) {
+        return;
+      }
+
+      replayState.playing = true;
+      playReplayBtn.textContent = "Pause";
+      replayState.timer = setInterval(async () => {
+        if (actionInProgress || refreshInProgress) {
+          return;
+        }
+        await moveReplayNext();
+        if (replayState.index >= replayState.steps.length - 1) {
+          stopReplayAutoPlay();
+        }
+      }, 850);
+    }
+
+    function resetReplayState(reasonMessage = "") {
+      stopReplayAutoPlay();
+      replayState.steps = [];
+      replayState.index = -1;
+      replayHintMessage = reasonMessage || 'Replay: click "Start From First" then "Next" to verify captured flow order.';
+      drawGraph(lastGraph);
+    }
+
+    async function refreshAll() {
+      if (refreshInProgress) {
+        return;
+      }
+      refreshInProgress = true;
+      syncControlButtons();
+      try {
+        await Promise.all([refreshStatus(), refreshActions(), refreshGraph()]);
+        setMessage(`Last refreshed at ${new Date().toLocaleTimeString()}`);
+      } catch (err) {
+        setMessage(err.message, true);
+      } finally {
+        refreshInProgress = false;
+        syncControlButtons();
+      }
+    }
+
+    async function runControlAction(url) {
+      if (actionInProgress) {
+        return;
+      }
+      actionInProgress = true;
+      syncControlButtons();
+      try {
+        setMessage("Applying action...");
+        const data = await callApi(url, { method: "POST" });
+        renderStatus(data);
+        renderSessions(data);
+        await Promise.all([refreshActions(), refreshGraph(), refreshStatus()]);
+
+        if (url.includes("/api/dashboard/clear")) {
+          resetReplayState("Replay reset: collected flow was cleared.");
+        }
+        if (url.includes("/api/dashboard/stop")) {
+          stopReplayAutoPlay();
+        }
+
+        setMessage(`Action applied at ${new Date().toLocaleTimeString()}`);
+      } catch (err) {
+        setMessage(err.message, true);
+      } finally {
+        actionInProgress = false;
+        syncControlButtons();
+      }
+    }
+
+    function updateGraphCursor() {
+      if (graphMode !== "3d") {
+        canvas.style.cursor = "default";
+        return;
+      }
+      if (graphInteraction.active) {
+        canvas.style.cursor = "grabbing";
+      } else {
+        canvas.style.cursor = hoveredNodeId ? "pointer" : "grab";
+      }
+    }
+
+    function updateHoveredNode(event) {
+      if (graphMode !== "3d") {
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+
+      let nextHovered = null;
+      let closestDistance = Infinity;
+
+      for (const node of projectedNodeCache) {
+        const distance = Math.hypot(px - node.x, py - node.y);
+        if (distance <= node.radius + 6 && distance < closestDistance) {
+          closestDistance = distance;
+          nextHovered = node.id;
+        }
+      }
+
+      if (nextHovered !== hoveredNodeId) {
+        hoveredNodeId = nextHovered;
+        drawGraph(lastGraph);
+      } else {
+        updateGraphCursor();
+      }
+    }
+
+    function resetGraphCamera() {
+      if (graphMode !== "3d") {
+        return;
+      }
+      graphView.yaw = -0.45;
+      graphView.pitch = 0.3;
+      graphView.distance = 640;
+      graphView.panX = 0;
+      graphView.panY = 0;
+      drawGraph(lastGraph);
+    }
+
+    function handleGraphPointerDown(event) {
+      if (graphMode !== "3d") {
+        return;
+      }
+      if (event.button !== 0) {
+        return;
+      }
+
+      graphInteraction.active = true;
+      graphInteraction.pointerId = event.pointerId;
+      graphInteraction.mode = event.shiftKey ? "pan" : "rotate";
+      graphInteraction.lastX = event.clientX;
+      graphInteraction.lastY = event.clientY;
+      hoveredNodeId = null;
+
+      canvas.setPointerCapture(event.pointerId);
+      updateGraphCursor();
+      event.preventDefault();
+    }
+
+    function handleGraphPointerMove(event) {
+      if (graphMode !== "3d") {
+        return;
+      }
+      if (!graphInteraction.active || graphInteraction.pointerId !== event.pointerId) {
+        updateHoveredNode(event);
+        return;
+      }
+
+      const dx = event.clientX - graphInteraction.lastX;
+      const dy = event.clientY - graphInteraction.lastY;
+      graphInteraction.lastX = event.clientX;
+      graphInteraction.lastY = event.clientY;
+
+      if (graphInteraction.mode === "pan") {
+        graphView.panX += dx;
+        graphView.panY += dy;
+      } else {
+        graphView.yaw += dx * 0.0085;
+        graphView.pitch = clamp(graphView.pitch + dy * 0.0085, -1.2, 1.2);
+      }
+
+      drawGraph(lastGraph);
+      event.preventDefault();
+    }
+
+    function finishGraphPointerInteraction(event) {
+      if (graphMode !== "3d") {
+        return;
+      }
+      if (graphInteraction.pointerId !== event.pointerId) {
+        return;
+      }
+
+      graphInteraction.active = false;
+      graphInteraction.pointerId = null;
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId);
+      }
+      updateGraphCursor();
+    }
+
+    async function toggleGraphFullscreen() {
+      if (!graphCard.requestFullscreen) {
+        throw new Error("Fullscreen is not supported in this browser.");
+      }
+      if (document.fullscreenElement === graphCard) {
+        await document.exitFullscreen();
+      } else {
+        await graphCard.requestFullscreen();
+      }
+    }
+
+    function syncFullscreenButton() {
+      const isFullscreen = document.fullscreenElement === graphCard;
+      fullscreenGraphBtn.textContent = isFullscreen ? "Exit Fullscreen" : "Fullscreen";
+      drawGraph(lastGraph);
+    }
+
+    startBtn.addEventListener("click", () => runControlAction("/api/dashboard/start"));
+    stopBtn.addEventListener("click", () => runControlAction("/api/dashboard/stop"));
+    mode2dBtn.addEventListener("click", () => setGraphMode("2d"));
+    mode3dBtn.addEventListener("click", () => setGraphMode("3d"));
+    startReplayBtn.addEventListener("click", async () => {
+      try {
+        await startReplayFromFirst();
+      } catch (err) {
+        setMessage(err.message, true);
+      }
+    });
+    nextReplayBtn.addEventListener("click", async () => {
+      try {
+        await moveReplayNext();
+      } catch (err) {
+        setMessage(err.message, true);
+      }
+    });
+    playReplayBtn.addEventListener("click", async () => {
+      try {
+        await toggleReplayAutoPlay();
+      } catch (err) {
+        setMessage(err.message, true);
+      }
+    });
+    fullscreenGraphBtn.addEventListener("click", async () => {
+      try {
+        await toggleGraphFullscreen();
+      } catch (err) {
+        setMessage(`Fullscreen error: ${err.message}`, true);
+      }
+    });
+    clearBtn.addEventListener("click", async () => {
+      const confirmed = window.confirm(
+        "Clear all collected actions, graph data, and dashboard session history?"
+      );
+      if (!confirmed) return;
+      await runControlAction("/api/dashboard/clear");
+    });
+    refreshBtn.addEventListener("click", () => refreshAll());
+    window.addEventListener("resize", () => drawGraph(lastGraph));
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+    canvas.addEventListener("pointerdown", handleGraphPointerDown);
+    canvas.addEventListener("pointermove", handleGraphPointerMove);
+    canvas.addEventListener("pointerup", finishGraphPointerInteraction);
+    canvas.addEventListener("pointercancel", finishGraphPointerInteraction);
+    canvas.addEventListener(
+      "wheel",
+      (event) => {
+        if (graphMode !== "3d") {
+          return;
+        }
+        event.preventDefault();
+        graphView.distance = clamp(graphView.distance + event.deltaY * 0.65, 240, 1800);
+        drawGraph(lastGraph);
+      },
+      { passive: false }
+    );
+    canvas.addEventListener("dblclick", () => {
+      if (graphMode !== "3d") {
+        return;
+      }
+      resetGraphCamera();
+    });
+    document.addEventListener("fullscreenchange", () => syncFullscreenButton());
+    setGraphMode("2d");
+    updateGraphCursor();
+    syncFullscreenButton();
+
+    refreshAll();
+    setInterval(() => {
+      if (!actionInProgress) {
+        refreshAll();
+      }
+    }, 4000);
+  </script>
+</body>
+</html>

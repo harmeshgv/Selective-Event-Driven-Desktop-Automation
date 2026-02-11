@@ -42,6 +42,8 @@ pub struct EventTransformer {
     last_clipboard_type: Option<ContentType>,
     /// Track open windows for open/close detection
     open_windows: HashMap<isize, AppIdentifier>,
+    /// Track last observed browser URL per browser process to reduce duplicates
+    last_browser_url: HashMap<String, String>,
 }
 
 impl EventTransformer {
@@ -53,6 +55,7 @@ impl EventTransformer {
             last_action_time: None,
             last_clipboard_type: None,
             open_windows: HashMap::new(),
+            last_browser_url: HashMap::new(),
         }
     }
 
@@ -178,6 +181,54 @@ impl EventTransformer {
                 let _ = control_type; // Acknowledge but don't use
                 None
             }
+
+            RawOsEvent::BrowserNavigation {
+                hwnd: _,
+                process_name,
+                url,
+            } => {
+                let sanitized_name = self.sanitizer.sanitize_process_name(&process_name);
+                let browser_app = AppIdentifier::new(sanitized_name.clone());
+                let normalized_url = normalize_url(&url);
+
+                if normalized_url.is_empty() {
+                    None
+                } else {
+                    let is_duplicate = self
+                        .last_browser_url
+                        .get(&sanitized_name)
+                        .map(|last| last == &normalized_url)
+                        .unwrap_or(false);
+
+                    if is_duplicate {
+                        None
+                    } else {
+                        self.last_browser_url
+                            .insert(sanitized_name.clone(), normalized_url.clone());
+
+                        let domain = extract_domain(&normalized_url)
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let search_query = extract_search_query(&normalized_url);
+                        let search_engine = infer_search_engine(&domain);
+
+                        if let Some(query) = search_query {
+                            Some(SymbolicAction::SearchWeb {
+                                browser_app,
+                                engine: search_engine,
+                                query,
+                                url: normalized_url,
+                                domain,
+                            })
+                        } else {
+                            Some(SymbolicAction::VisitWebsite {
+                                browser_app,
+                                url: normalized_url,
+                                domain,
+                            })
+                        }
+                    }
+                }
+            }
         };
 
         // Update timing
@@ -211,12 +262,156 @@ impl EventTransformer {
         self.last_action_time = None;
         self.last_clipboard_type = None;
         self.open_windows.clear();
+        self.last_browser_url.clear();
     }
 }
 
 impl Default for EventTransformer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn normalize_url(url: &str) -> String {
+    let trimmed = url.trim().trim_matches('"').trim_matches('\'');
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let lower = trimmed.to_lowercase();
+    if lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("about:")
+        || lower.starts_with("edge://")
+        || lower.starts_with("chrome://")
+        || lower.starts_with("brave://")
+        || lower.starts_with("opera://")
+        || lower.starts_with("vivaldi://")
+        || lower.starts_with("file://")
+    {
+        trimmed.to_string()
+    } else if trimmed.contains('.') && !trimmed.contains(' ') {
+        format!("https://{}", trimmed)
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn extract_domain(url: &str) -> Option<String> {
+    let lower = url.to_lowercase();
+    if lower.is_empty() {
+        return None;
+    }
+
+    let without_scheme = if let Some((_, rest)) = lower.split_once("://") {
+        rest
+    } else {
+        lower.as_str()
+    };
+
+    let host = without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim();
+
+    if host.is_empty() {
+        return None;
+    }
+
+    Some(host.trim_start_matches("www.").to_string())
+}
+
+fn extract_search_query(url: &str) -> Option<String> {
+    let query_string = url.split_once('?')?.1.split('#').next().unwrap_or("");
+    if query_string.is_empty() {
+        return None;
+    }
+
+    let keys = ["q", "query", "p", "text", "search", "k", "keyword", "wd"];
+
+    for pair in query_string.split('&') {
+        let mut parts = pair.splitn(2, '=');
+        let key = parts.next().unwrap_or("").to_lowercase();
+        let value = parts.next().unwrap_or("");
+
+        if keys.contains(&key.as_str()) {
+            let decoded = percent_decode(value);
+            if !decoded.trim().is_empty() {
+                return Some(decoded);
+            }
+        }
+    }
+
+    None
+}
+
+fn infer_search_engine(domain: &str) -> Option<String> {
+    let d = domain.to_lowercase();
+
+    let engine = if d.contains("google.") {
+        Some("google")
+    } else if d.contains("bing.") {
+        Some("bing")
+    } else if d.contains("duckduckgo.") {
+        Some("duckduckgo")
+    } else if d.contains("yahoo.") {
+        Some("yahoo")
+    } else if d.contains("baidu.") {
+        Some("baidu")
+    } else if d.contains("yandex.") {
+        Some("yandex")
+    } else if d.contains("ecosia.") {
+        Some("ecosia")
+    } else if d.contains("startpage.") {
+        Some("startpage")
+    } else if d.contains("search.brave.com") {
+        Some("brave-search")
+    } else {
+        None
+    };
+
+    engine.map(|e| e.to_string())
+}
+
+fn percent_decode(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b'%' if i + 2 < bytes.len() => {
+                let h1 = from_hex(bytes[i + 1]);
+                let h2 = from_hex(bytes[i + 2]);
+                if let (Some(a), Some(b)) = (h1, h2) {
+                    out.push((a << 4) | b);
+                    i += 3;
+                } else {
+                    out.push(bytes[i]);
+                    i += 1;
+                }
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+
+    String::from_utf8(out).unwrap_or_else(|_| value.to_string())
+}
+
+fn from_hex(c: u8) -> Option<u8> {
+    match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        b'A'..=b'F' => Some(c - b'A' + 10),
+        _ => None,
     }
 }
 

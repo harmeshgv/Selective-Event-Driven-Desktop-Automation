@@ -285,6 +285,8 @@ pub enum SymbolicActionType {
     TypeText,
     Navigate,
     Interact,
+    VisitWebsite,
+    SearchWeb,
 }
 
 impl std::fmt::Display for SymbolicActionType {
@@ -298,6 +300,8 @@ impl std::fmt::Display for SymbolicActionType {
             SymbolicActionType::TypeText => write!(f, "TYPE_TEXT"),
             SymbolicActionType::Navigate => write!(f, "NAVIGATE"),
             SymbolicActionType::Interact => write!(f, "INTERACT"),
+            SymbolicActionType::VisitWebsite => write!(f, "VISIT_WEBSITE"),
+            SymbolicActionType::SearchWeb => write!(f, "SEARCH_WEB"),
         }
     }
 }
@@ -370,6 +374,22 @@ pub enum SymbolicAction {
         element_type: ElementType,
         interaction: InteractionType,
     },
+
+    /// User visited a website in a browser
+    VisitWebsite {
+        browser_app: AppIdentifier,
+        url: String,
+        domain: String,
+    },
+
+    /// User performed a web search
+    SearchWeb {
+        browser_app: AppIdentifier,
+        engine: Option<String>,
+        query: String,
+        url: String,
+        domain: String,
+    },
 }
 
 impl SymbolicAction {
@@ -384,6 +404,8 @@ impl SymbolicAction {
             SymbolicAction::TypeText { .. } => SymbolicActionType::TypeText,
             SymbolicAction::Navigate { .. } => SymbolicActionType::Navigate,
             SymbolicAction::Interact { .. } => SymbolicActionType::Interact,
+            SymbolicAction::VisitWebsite { .. } => SymbolicActionType::VisitWebsite,
+            SymbolicAction::SearchWeb { .. } => SymbolicActionType::SearchWeb,
         }
     }
 
@@ -398,6 +420,8 @@ impl SymbolicAction {
             SymbolicAction::TypeText { target_app, .. } => target_app,
             SymbolicAction::Navigate { app, .. } => app,
             SymbolicAction::Interact { app, .. } => app,
+            SymbolicAction::VisitWebsite { browser_app, .. } => browser_app,
+            SymbolicAction::SearchWeb { browser_app, .. } => browser_app,
         }
     }
 
@@ -430,6 +454,20 @@ impl SymbolicAction {
             } => format!(
                 "interact:{}:{:?}:{:?}",
                 app.process_name, element_type, interaction
+            ),
+            SymbolicAction::VisitWebsite {
+                browser_app,
+                domain,
+                ..
+            } => format!("visit:{}:{}", browser_app.process_name, domain),
+            SymbolicAction::SearchWeb {
+                browser_app,
+                engine,
+                ..
+            } => format!(
+                "search:{}:{}",
+                browser_app.process_name,
+                engine.as_deref().unwrap_or("unknown")
             ),
         }
     }

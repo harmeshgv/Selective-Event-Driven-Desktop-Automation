@@ -116,6 +116,12 @@ impl Sanitizer {
             }
             super::SymbolicAction::Navigate { app, .. } => !self.contains_pii(&app.process_name),
             super::SymbolicAction::Interact { app, .. } => !self.contains_pii(&app.process_name),
+            super::SymbolicAction::VisitWebsite { browser_app, .. } => {
+                !self.contains_pii(&browser_app.process_name)
+            }
+            super::SymbolicAction::SearchWeb { browser_app, .. } => {
+                !self.contains_pii(&browser_app.process_name)
+            }
         }
     }
 }

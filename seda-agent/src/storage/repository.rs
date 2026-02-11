@@ -494,6 +494,36 @@ impl Repository {
         )?;
         Ok(())
     }
+
+    /// Clear collected runtime data while keeping the active session valid.
+    ///
+    /// This is used by the dashboard clear action. We preserve `current_session_id`
+    /// so new actions can continue to be recorded immediately after the reset.
+    pub fn clear_collected_data(&mut self) -> Result<(), RepositoryError> {
+        self.conn.execute("DELETE FROM symbolic_actions", [])?;
+        self.conn.execute("DELETE FROM action_transitions", [])?;
+        self.conn.execute("DELETE FROM detected_patterns", [])?;
+        self.conn.execute("DELETE FROM audit_log", [])?;
+
+        self.conn.execute(
+            "DELETE FROM sessions WHERE id != ?",
+            params![&self.current_session_id],
+        )?;
+
+        let now_ms = Utc::now().timestamp_millis();
+        let updated = self.conn.execute(
+            "UPDATE sessions
+             SET started_ms = ?, ended_ms = NULL, action_count = 0
+             WHERE id = ?",
+            params![now_ms, &self.current_session_id],
+        )?;
+
+        if updated == 0 {
+            self.start_session()?;
+        }
+
+        Ok(())
+    }
 }
 
 /// Statistics from a cleanup operation
@@ -598,5 +628,27 @@ mod tests {
         assert_eq!(audits.len(), 1);
         assert_eq!(audits[0].operation, "list_windows");
         assert_eq!(audits[0].result, "success");
+    }
+
+    #[test]
+    fn test_clear_collected_data_keeps_active_session_valid() {
+        let mut repo = Repository::open_in_memory().unwrap();
+        let session_before = repo.session_id().to_string();
+
+        let action = SymbolicAction::SwitchApp {
+            from_app: AppIdentifier::new("chrome.exe"),
+            to_app: AppIdentifier::new("code.exe"),
+        };
+
+        repo.store_action(&action, Utc::now(), Some(100)).unwrap();
+        assert_eq!(repo.count_actions().unwrap(), 1);
+
+        repo.clear_collected_data().unwrap();
+        assert_eq!(repo.count_actions().unwrap(), 0);
+        assert_eq!(repo.session_id(), session_before);
+
+        // Ensure writes still work after clear and session FK is intact.
+        repo.store_action(&action, Utc::now(), Some(50)).unwrap();
+        assert_eq!(repo.count_actions().unwrap(), 1);
     }
 }

@@ -10,8 +10,12 @@
 //! with explicit safety checks.
 
 use sha2::{Digest, Sha256};
+use uiautomation::patterns::UIValuePattern;
+use uiautomation::types::ControlType;
 use uiautomation::types::TreeScope;
+use uiautomation::types::UIProperty;
 use uiautomation::UIAutomation;
+use uiautomation::UIElement;
 
 use super::ObserverError;
 
@@ -278,6 +282,123 @@ impl AccessibilityTree {
 
         self.build_element_tree(&focused, 1, 0)
     }
+}
+
+/// Best-effort extraction of a browser URL from a window using UI Automation.
+///
+/// This scans editable controls in the window subtree and returns the first value
+/// that looks like a URL or domain.
+pub fn extract_browser_url_for_window(hwnd: isize) -> Option<String> {
+    let automation = UIAutomation::new().ok()?;
+    let handle = uiautomation::types::Handle::from(hwnd);
+    let root = automation.element_from_handle(handle).ok()?;
+
+    let edits = automation
+        .create_matcher()
+        .from(root)
+        .control_type(ControlType::Edit)
+        .depth(10)
+        .timeout(0)
+        .find_all()
+        .ok()?;
+
+    let mut fallback_candidate: Option<String> = None;
+
+    for edit in edits {
+        if let Some(raw_value) = extract_text_value(&edit) {
+            let normalized = normalize_url_like(raw_value.trim());
+            if looks_like_url(&normalized) {
+                return Some(normalized);
+            }
+
+            if fallback_candidate.is_none() && looks_like_domain(&normalized) {
+                fallback_candidate = Some(normalized);
+            }
+        }
+    }
+
+    fallback_candidate
+}
+
+fn extract_text_value(element: &UIElement) -> Option<String> {
+    if let Ok(pattern) = element.get_pattern::<UIValuePattern>() {
+        if let Ok(value) = pattern.get_value() {
+            if !value.trim().is_empty() {
+                return Some(value);
+            }
+        }
+    }
+
+    if let Ok(value_variant) = element.get_property_value(UIProperty::ValueValue) {
+        if let Ok(value) = value_variant.get_string() {
+            if !value.trim().is_empty() {
+                return Some(value);
+            }
+        }
+    }
+
+    if let Ok(name) = element.get_name() {
+        if !name.trim().is_empty() {
+            return Some(name);
+        }
+    }
+
+    None
+}
+
+fn normalize_url_like(value: &str) -> String {
+    let trimmed = value.trim().trim_matches('"').trim_matches('\'');
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let lower = trimmed.to_lowercase();
+    if lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("about:")
+        || lower.starts_with("edge://")
+        || lower.starts_with("chrome://")
+        || lower.starts_with("brave://")
+        || lower.starts_with("vivaldi://")
+        || lower.starts_with("opera://")
+        || lower.starts_with("file://")
+    {
+        trimmed.to_string()
+    } else if trimmed.contains('.') && !trimmed.contains(' ') {
+        format!("https://{}", trimmed)
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn looks_like_url(value: &str) -> bool {
+    let lower = value.to_lowercase();
+    if lower.is_empty() {
+        return false;
+    }
+
+    if lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("about:")
+        || lower.starts_with("edge://")
+        || lower.starts_with("chrome://")
+        || lower.starts_with("brave://")
+        || lower.starts_with("vivaldi://")
+        || lower.starts_with("opera://")
+    {
+        return true;
+    }
+
+    looks_like_domain(value)
+}
+
+fn looks_like_domain(value: &str) -> bool {
+    let val = value.trim();
+    !val.is_empty()
+        && val.contains('.')
+        && !val.contains(' ')
+        && !val.starts_with('/')
+        && !val.starts_with('\\')
 }
 
 /// Get the list of supported UI Automation patterns for an element

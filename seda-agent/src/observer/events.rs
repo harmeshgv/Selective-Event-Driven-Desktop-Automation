@@ -113,6 +113,18 @@ pub enum RawOsEvent {
         element_id: String,
         control_type: String,
     },
+
+    /// Browser navigation detected from URL bar value
+    ///
+    /// # Privacy Note
+    ///
+    /// This event intentionally captures URL text for explicit user-requested
+    /// web activity tracking. This is not enabled by default in most privacy-first systems.
+    BrowserNavigation {
+        hwnd: isize,
+        process_name: String,
+        url: String,
+    },
 }
 
 impl RawOsEvent {
@@ -122,6 +134,7 @@ impl RawOsEvent {
             RawOsEvent::WindowFocusChanged { process_name, .. } => Some(process_name),
             RawOsEvent::WindowOpened { process_name, .. } => Some(process_name),
             RawOsEvent::WindowClosed { process_name, .. } => Some(process_name),
+            RawOsEvent::BrowserNavigation { process_name, .. } => Some(process_name),
             _ => None,
         }
     }
@@ -133,6 +146,7 @@ impl RawOsEvent {
             RawOsEvent::WindowOpened { hwnd, .. } => Some(*hwnd),
             RawOsEvent::WindowClosed { hwnd, .. } => Some(*hwnd),
             RawOsEvent::ElementFocused { hwnd, .. } => Some(*hwnd),
+            RawOsEvent::BrowserNavigation { hwnd, .. } => Some(*hwnd),
             _ => None,
         }
     }

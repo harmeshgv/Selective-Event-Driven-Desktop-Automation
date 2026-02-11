@@ -45,7 +45,8 @@ impl RateLimitWindow {
     fn record(&mut self, now_ms: u64) -> u32 {
         // Clean old entries
         let cutoff = now_ms.saturating_sub(self.window_size_ms);
-        self.counts.retain(|&ts, _| ts > cutoff);
+        let cutoff_bucket = cutoff / 1000;
+        self.counts.retain(|&bucket, _| bucket >= cutoff_bucket);
 
         // Record new entry
         let bucket = now_ms / 1000; // 1-second buckets
@@ -57,9 +58,10 @@ impl RateLimitWindow {
 
     fn count(&self, now_ms: u64) -> u32 {
         let cutoff = now_ms.saturating_sub(self.window_size_ms);
+        let cutoff_bucket = cutoff / 1000;
         self.counts
             .iter()
-            .filter(|(&ts, _)| ts > cutoff / 1000)
+            .filter(|(&bucket, _)| bucket >= cutoff_bucket)
             .map(|(_, &c)| c)
             .sum()
     }

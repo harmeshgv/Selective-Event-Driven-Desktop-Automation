@@ -16,21 +16,23 @@
 //! SetWinEventHook requires a message loop in the calling thread.
 //! We spawn a dedicated thread that runs the message pump.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
 use parking_lot::Mutex;
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Accessibility::{
     SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, TranslateMessage, EVENT_OBJECT_FOCUS, EVENT_SYSTEM_FOREGROUND,
-    MSG, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
+    MSG, PostThreadMessageW, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_QUIT,
 };
 
+use super::accessibility::extract_browser_url_for_window;
 use super::events::RawOsEvent;
 use super::window_manager::WindowManager;
 use super::{ObserverError, OsObserver};
@@ -46,6 +48,8 @@ static HOOKS: once_cell::sync::OnceCell<Mutex<Vec<isize>>> = once_cell::sync::On
 pub struct WindowsObserver {
     /// Whether the observer is currently running
     running: Arc<AtomicBool>,
+    /// Native thread ID for the observer message loop thread
+    thread_id: Arc<AtomicU32>,
     /// Handle to the observer thread
     thread_handle: Option<JoinHandle<()>>,
     /// Window manager for looking up window info
@@ -61,6 +65,7 @@ impl WindowsObserver {
 
         Self {
             running: Arc::new(AtomicBool::new(false)),
+            thread_id: Arc::new(AtomicU32::new(0)),
             thread_handle: None,
             window_manager: Arc::new(Mutex::new(WindowManager::new())),
         }
@@ -92,10 +97,13 @@ impl OsObserver for WindowsObserver {
         }
 
         let running = Arc::clone(&self.running);
+        let thread_id = Arc::clone(&self.thread_id);
         let window_manager = Arc::clone(&self.window_manager);
 
         // Spawn the observer thread
         let handle = thread::spawn(move || {
+            let current_thread_id = unsafe { GetCurrentThreadId() };
+            thread_id.store(current_thread_id, Ordering::SeqCst);
             running.store(true, Ordering::SeqCst);
 
             // Set up event hooks
@@ -176,6 +184,7 @@ impl OsObserver for WindowsObserver {
             }
 
             running.store(false, Ordering::SeqCst);
+            thread_id.store(0, Ordering::SeqCst);
             tracing::info!("Windows observer stopped");
         });
 
@@ -194,15 +203,14 @@ impl OsObserver for WindowsObserver {
     }
 
     fn stop(&mut self) -> Result<(), ObserverError> {
-        if !self.running.load(Ordering::SeqCst) {
-            return Ok(());
-        }
-
         self.running.store(false, Ordering::SeqCst);
 
-        // Post a quit message to break the message loop
-        unsafe {
-            windows::Win32::UI::WindowsAndMessaging::PostQuitMessage(0);
+        // Post WM_QUIT to the observer thread's message queue.
+        let tid = self.thread_id.load(Ordering::SeqCst);
+        if tid != 0 {
+            unsafe {
+                let _ = PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0));
+            }
         }
 
         // Wait for thread to finish
@@ -211,6 +219,7 @@ impl OsObserver for WindowsObserver {
                 .join()
                 .map_err(|_| ObserverError::ThreadError("Failed to join observer thread".into()))?;
         }
+        self.thread_id.store(0, Ordering::SeqCst);
 
         // Clear the global sender
         if let Some(sender_lock) = EVENT_SENDER.get() {
@@ -381,6 +390,115 @@ impl Drop for ClipboardObserver {
     }
 }
 
+/// Browser URL observer - polls the foreground browser window for URL changes
+///
+/// This observer complements WinEvent hooks by tracking in-window browser navigation
+/// where focus does not change between windows.
+pub struct BrowserUrlObserver {
+    running: Arc<AtomicBool>,
+    thread_handle: Option<JoinHandle<()>>,
+}
+
+impl BrowserUrlObserver {
+    /// Create a new browser URL observer
+    pub fn new() -> Self {
+        Self {
+            running: Arc::new(AtomicBool::new(false)),
+            thread_handle: None,
+        }
+    }
+
+    /// Start polling foreground browser URL changes
+    pub fn start(&mut self, event_sender: Sender<RawOsEvent>) -> Result<(), ObserverError> {
+        if self.running.load(Ordering::SeqCst) {
+            return Err(ObserverError::HookSetupFailed(
+                "Browser URL observer already running".to_string(),
+            ));
+        }
+
+        let running = Arc::clone(&self.running);
+
+        let handle = thread::spawn(move || {
+            running.store(true, Ordering::SeqCst);
+            let mut last_emitted: Option<(isize, String)> = None;
+
+            while running.load(Ordering::SeqCst) {
+                thread::sleep(std::time::Duration::from_millis(1200));
+
+                let window_manager = WindowManager::new();
+                let Some(window) = window_manager.get_foreground_window() else {
+                    continue;
+                };
+
+                if !is_browser_process(&window.process_name) {
+                    continue;
+                }
+
+                let Some(url) = extract_browser_url_for_window(window.hwnd) else {
+                    continue;
+                };
+
+                let should_emit = match &last_emitted {
+                    Some((last_hwnd, last_url)) => *last_hwnd != window.hwnd || *last_url != url,
+                    None => true,
+                };
+
+                if !should_emit {
+                    continue;
+                }
+
+                let event = RawOsEvent::BrowserNavigation {
+                    hwnd: window.hwnd,
+                    process_name: window.process_name.clone(),
+                    url: url.clone(),
+                };
+
+                if event_sender.send(event).is_err() {
+                    break;
+                }
+
+                last_emitted = Some((window.hwnd, url));
+            }
+
+            running.store(false, Ordering::SeqCst);
+            tracing::info!("Browser URL observer stopped");
+        });
+
+        self.thread_handle = Some(handle);
+        Ok(())
+    }
+
+    /// Stop polling browser URLs
+    pub fn stop(&mut self) -> Result<(), ObserverError> {
+        self.running.store(false, Ordering::SeqCst);
+
+        if let Some(handle) = self.thread_handle.take() {
+            handle
+                .join()
+                .map_err(|_| ObserverError::ThreadError("Failed to join browser URL thread".into()))?;
+        }
+
+        Ok(())
+    }
+
+    /// Check if running
+    pub fn is_running(&self) -> bool {
+        self.running.load(Ordering::SeqCst)
+    }
+}
+
+impl Default for BrowserUrlObserver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for BrowserUrlObserver {
+    fn drop(&mut self) {
+        let _ = self.stop();
+    }
+}
+
 /// Get the type of content on the clipboard without reading the actual content
 ///
 /// SAFETY: This only checks format availability, never reads clipboard data
@@ -444,7 +562,18 @@ static KEYBOARD_HOOK: once_cell::sync::OnceCell<Mutex<Option<isize>>> =
 /// modifier+key combinations that indicate copy/paste/cut operations.
 pub struct KeyboardObserver {
     running: Arc<AtomicBool>,
+    thread_id: Arc<AtomicU32>,
     thread_handle: Option<JoinHandle<()>>,
+}
+
+fn is_browser_process(process_name: &str) -> bool {
+    let p = process_name.to_lowercase();
+    p.contains("chrome")
+        || p.contains("msedge")
+        || p.contains("firefox")
+        || p.contains("brave")
+        || p.contains("opera")
+        || p.contains("vivaldi")
 }
 
 impl KeyboardObserver {
@@ -455,6 +584,7 @@ impl KeyboardObserver {
 
         Self {
             running: Arc::new(AtomicBool::new(false)),
+            thread_id: Arc::new(AtomicU32::new(0)),
             thread_handle: None,
         }
     }
@@ -473,8 +603,11 @@ impl KeyboardObserver {
         }
 
         let running = Arc::clone(&self.running);
+        let thread_id = Arc::clone(&self.thread_id);
 
         let handle = thread::spawn(move || {
+            let current_thread_id = unsafe { GetCurrentThreadId() };
+            thread_id.store(current_thread_id, Ordering::SeqCst);
             running.store(true, Ordering::SeqCst);
 
             // Set up low-level keyboard hook
@@ -528,6 +661,7 @@ impl KeyboardObserver {
             }
 
             running.store(false, Ordering::SeqCst);
+            thread_id.store(0, Ordering::SeqCst);
             tracing::info!("Keyboard observer stopped");
         });
 
@@ -549,9 +683,12 @@ impl KeyboardObserver {
     pub fn stop(&mut self) -> Result<(), ObserverError> {
         self.running.store(false, Ordering::SeqCst);
 
-        // Post a quit message to break the message loop
-        unsafe {
-            windows::Win32::UI::WindowsAndMessaging::PostQuitMessage(0);
+        // Post WM_QUIT to the keyboard observer thread's message queue.
+        let tid = self.thread_id.load(Ordering::SeqCst);
+        if tid != 0 {
+            unsafe {
+                let _ = PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0));
+            }
         }
 
         if let Some(handle) = self.thread_handle.take() {
@@ -559,6 +696,7 @@ impl KeyboardObserver {
                 .join()
                 .map_err(|_| ObserverError::ThreadError("Failed to join keyboard thread".into()))?;
         }
+        self.thread_id.store(0, Ordering::SeqCst);
 
         // Clear the global sender
         if let Some(sender_lock) = KEYBOARD_SENDER.get() {

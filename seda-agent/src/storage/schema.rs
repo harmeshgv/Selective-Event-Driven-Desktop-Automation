@@ -59,6 +59,10 @@ impl StoredAction {
             SymbolicAction::Navigate { app, .. } | SymbolicAction::Interact { app, .. } => {
                 (None, Some(app.process_name.clone()))
             }
+            SymbolicAction::VisitWebsite { browser_app, .. }
+            | SymbolicAction::SearchWeb { browser_app, .. } => {
+                (None, Some(browser_app.process_name.clone()))
+            }
         };
 
         Ok(Self {

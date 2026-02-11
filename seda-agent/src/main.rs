@@ -42,13 +42,12 @@ use tokio::sync::Mutex as TokioMutex;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use seda_agent::config::Config;
+use seda_agent::control::CollectionController;
 use seda_agent::graph::TaskGraphBuilder;
 use seda_agent::mcp::McpServer;
 use seda_agent::mining::SequenceMiner;
 use seda_agent::observer::events::RawOsEvent;
 use seda_agent::observer::window_manager::WindowManager;
-use seda_agent::observer::windows::{ClipboardObserver, KeyboardObserver, WindowsObserver};
-use seda_agent::observer::OsObserver;
 use seda_agent::storage::Repository;
 use seda_agent::symbolizer::transformer::{EventTransformer, TimestampedAction};
 
@@ -101,38 +100,12 @@ async fn main() -> Result<()> {
     let (event_tx, event_rx) = mpsc::channel::<RawOsEvent>();
     let (action_tx, action_rx) = mpsc::channel::<TimestampedAction>();
 
-    // Start the Windows observer
-    tracing::info!("Starting Windows observer...");
-    let mut windows_observer = WindowsObserver::new();
-    let event_tx_clone = event_tx.clone();
-
-    if let Err(e) = windows_observer.start(event_tx_clone) {
-        tracing::error!("Failed to start Windows observer: {}", e);
-        // Continue anyway - MCP server can still work for testing
-    } else {
-        tracing::info!("Windows observer started");
-    }
-
-    // Start clipboard observer
-    tracing::info!("Starting clipboard observer...");
-    let mut clipboard_observer = ClipboardObserver::new();
-    let event_tx_clipboard = event_tx.clone();
-
-    if let Err(e) = clipboard_observer.start(event_tx_clipboard) {
-        tracing::error!("Failed to start clipboard observer: {}", e);
-    } else {
-        tracing::info!("Clipboard observer started");
-    }
-
-    // Start keyboard observer (for Ctrl+C, Ctrl+V detection)
-    tracing::info!("Starting keyboard observer...");
-    let mut keyboard_observer = KeyboardObserver::new();
-
-    if let Err(e) = keyboard_observer.start(event_tx) {
-        tracing::error!("Failed to start keyboard observer: {}", e);
-    } else {
-        tracing::info!("Keyboard observer started (Ctrl+C/V/X detection)");
-    }
+    // Initialize collector controller (observer start/stop lifecycle)
+    let collector = Arc::new(Mutex::new(CollectionController::new(
+        event_tx,
+        Arc::clone(&repository),
+    )));
+    tracing::info!("Data collection is idle at startup (manual start via dashboard)");
 
     // Start the event transformer (symbolizer)
     tracing::info!("Starting event transformer...");
@@ -218,7 +191,8 @@ async fn main() -> Result<()> {
 
     // Start MCP server
     tracing::info!("Starting MCP server on port {}...", config.mcp_port);
-    let mcp_server = McpServer::new(config.mcp_port, mcp_repository, mcp_window_manager);
+    let mcp_server = McpServer::new(config.mcp_port, mcp_repository, mcp_window_manager)
+        .with_collector(Arc::clone(&collector));
 
     // Run MCP server in background
     let _mcp_handle = tokio::spawn(async move {
@@ -230,6 +204,7 @@ async fn main() -> Result<()> {
     tracing::info!("===========================================");
     tracing::info!("SEDA Agent is running!");
     tracing::info!("MCP Server: http://127.0.0.1:{}", config.mcp_port);
+    tracing::info!("Dashboard: http://127.0.0.1:{}/dashboard", config.mcp_port);
     tracing::info!("Database: {:?}", config.database_path);
     tracing::info!("Press Ctrl+C to stop");
     tracing::info!("===========================================");
@@ -247,22 +222,13 @@ async fn main() -> Result<()> {
     // Cleanup
     tracing::info!("Shutting down...");
 
-    // Stop observers
-    if let Err(e) = windows_observer.stop() {
-        tracing::error!("Error stopping Windows observer: {}", e);
-    }
-    if let Err(e) = clipboard_observer.stop() {
-        tracing::error!("Error stopping clipboard observer: {}", e);
-    }
-    if let Err(e) = keyboard_observer.stop() {
-        tracing::error!("Error stopping keyboard observer: {}", e);
-    }
-
-    // End the current session
-    if let Ok(mut repo) = repository.lock() {
-        if let Err(e) = repo.end_session() {
-            tracing::error!("Error ending session: {}", e);
+    // Stop observers via controller
+    if let Ok(mut controller) = collector.lock() {
+        if let Err(e) = controller.stop_collection() {
+            tracing::error!("Error stopping data collection: {}", e);
         }
+    } else {
+        tracing::error!("Failed to lock collector controller during shutdown");
     }
 
     // Log final statistics

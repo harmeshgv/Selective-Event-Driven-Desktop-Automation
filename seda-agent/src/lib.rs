@@ -19,6 +19,7 @@
 //! - All actions are audited
 
 pub mod config;
+pub mod control;
 pub mod graph;
 pub mod mcp;
 pub mod mining;

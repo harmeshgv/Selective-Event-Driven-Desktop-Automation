@@ -272,6 +272,19 @@ pub enum FieldType {
     Other,
 }
 
+/// Stable selector metadata for a UI element target.
+///
+/// This carries only structural identifiers, not user-entered content.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ElementSelector {
+    pub element_id: String,
+    pub control_type: String,
+    pub automation_id: Option<String>,
+    pub class_name: Option<String>,
+    pub name_hash: Option<String>,
+    pub is_keyboard_focusable: bool,
+}
+
 /// Simple symbolic action type for pattern matching
 ///
 /// This is a simplified representation for sequence mining.
@@ -360,6 +373,7 @@ pub enum SymbolicAction {
     TypeText {
         target_app: AppIdentifier,
         field_type: FieldType,
+        selector: Option<ElementSelector>,
     },
 
     /// User performed navigation within an app
@@ -373,6 +387,7 @@ pub enum SymbolicAction {
         app: AppIdentifier,
         element_type: ElementType,
         interaction: InteractionType,
+        selector: Option<ElementSelector>,
     },
 
     /// User visited a website in a browser
@@ -443,6 +458,7 @@ impl SymbolicAction {
             SymbolicAction::TypeText {
                 target_app,
                 field_type,
+                ..
             } => format!("type:{}:{:?}", target_app.process_name, field_type),
             SymbolicAction::Navigate { app, action } => {
                 format!("nav:{}:{:?}", app.process_name, action)
@@ -451,6 +467,7 @@ impl SymbolicAction {
                 app,
                 element_type,
                 interaction,
+                ..
             } => format!(
                 "interact:{}:{:?}:{:?}",
                 app.process_name, element_type, interaction

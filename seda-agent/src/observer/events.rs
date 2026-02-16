@@ -56,6 +56,14 @@ pub enum VirtualKey {
     PrintScreen,
 }
 
+/// High-level UI element interaction category observed from Windows accessibility events.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ElementInteractionKind {
+    Focus,
+    Invoke,
+    ValueChanged,
+}
+
 /// Raw OS events captured before symbolization
 ///
 /// # Privacy Note
@@ -107,11 +115,19 @@ pub enum RawOsEvent {
         process_name: String,
     },
 
-    /// UI element focus changed within a window
-    ElementFocused {
+    /// UI element interaction observed within a window.
+    ///
+    /// Includes stable selector metadata needed for repeatable automation scripts.
+    ElementInteracted {
         hwnd: isize,
+        process_name: String,
         element_id: String,
         control_type: String,
+        automation_id: Option<String>,
+        class_name: Option<String>,
+        name_hash: Option<String>,
+        is_keyboard_focusable: bool,
+        interaction: ElementInteractionKind,
     },
 
     /// Browser navigation detected from URL bar value
@@ -134,6 +150,7 @@ impl RawOsEvent {
             RawOsEvent::WindowFocusChanged { process_name, .. } => Some(process_name),
             RawOsEvent::WindowOpened { process_name, .. } => Some(process_name),
             RawOsEvent::WindowClosed { process_name, .. } => Some(process_name),
+            RawOsEvent::ElementInteracted { process_name, .. } => Some(process_name),
             RawOsEvent::BrowserNavigation { process_name, .. } => Some(process_name),
             _ => None,
         }
@@ -145,7 +162,7 @@ impl RawOsEvent {
             RawOsEvent::WindowFocusChanged { hwnd, .. } => Some(*hwnd),
             RawOsEvent::WindowOpened { hwnd, .. } => Some(*hwnd),
             RawOsEvent::WindowClosed { hwnd, .. } => Some(*hwnd),
-            RawOsEvent::ElementFocused { hwnd, .. } => Some(*hwnd),
+            RawOsEvent::ElementInteracted { hwnd, .. } => Some(*hwnd),
             RawOsEvent::BrowserNavigation { hwnd, .. } => Some(*hwnd),
             _ => None,
         }

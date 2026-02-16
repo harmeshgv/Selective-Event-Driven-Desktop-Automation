@@ -8,6 +8,8 @@ SEDA captures high-level OS events, transforms them into symbolic actions, store
 
 - Manual collection control from the dashboard (`Start Session`, `Stop Session`, `Clear Collected Data`).
 - 3D directed task transition graph with rotate, pan, zoom, replay, and fullscreen.
+- Repeated-task bundle detection with one-click run inspection in replay mode.
+  Bundles are context-aware (app + web domain/query/path), so larger flows can be grouped as one task.
 - Session timeline and recent action table.
 - Browser activity capture for visited URLs and recognized search queries.
 - Local-only HTTP server (`127.0.0.1`) and local SQLite storage.
@@ -56,6 +58,7 @@ Default endpoints:
 3. Perform desktop activity.
 4. Use `Stop Session` to end and finalize a session.
 5. Use `Clear Collected Data` to reset collected runtime data.
+6. Open `Repeated Tasks` to inspect bundles of flows you perform again and again.
 
 ### Graph Controls
 
@@ -68,6 +71,7 @@ Default endpoints:
 - `Next`: step through captured flow order.
 - `Auto Play`: play replay sequence.
 - `Fullscreen`: expand graph panel.
+- `Repeated Tasks > Inspect Run`: load a representative linear run of a repeated bundle into replay.
 
 ## Data Captured
 
@@ -78,6 +82,8 @@ SEDA stores symbolic actions such as:
 - Shortcut-driven paste interactions.
 - Browser navigation events as `VISIT_WEBSITE` (URL and domain).
 - Browser search events as `SEARCH_WEB` (URL, domain, query, and inferred engine).
+- UI element interactions as `INTERACT` with selector metadata (element id/control type/automation id/class/name hash when available).
+- Text-input updates as `TYPE_TEXT` with field type inference and selector metadata (no raw typed text).
 
 ## Privacy Notes
 
@@ -98,6 +104,7 @@ SEDA stores symbolic actions such as:
 - `GET /api/dashboard/actions?limit=120`
 - `GET /api/dashboard/flow?limit=2500`
 - `GET /api/dashboard/graph?min_frequency=1`
+- `GET /api/dashboard/repeated_tasks?min_frequency=2&limit=25&flow_limit=5000`
 
 ### JSON-RPC methods (`/rpc`, `/mcp`)
 

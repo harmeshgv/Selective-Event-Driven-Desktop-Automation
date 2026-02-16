@@ -28,12 +28,13 @@ use windows::Win32::UI::Accessibility::{
     SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, GetMessageW, TranslateMessage, EVENT_OBJECT_FOCUS, EVENT_SYSTEM_FOREGROUND,
-    MSG, PostThreadMessageW, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_QUIT,
+    DispatchMessageW, GetMessageW, TranslateMessage, EVENT_OBJECT_FOCUS, EVENT_OBJECT_INVOKED,
+    EVENT_OBJECT_VALUECHANGE, EVENT_SYSTEM_FOREGROUND, MSG, PostThreadMessageW,
+    WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WM_QUIT,
 };
 
-use super::accessibility::extract_browser_url_for_window;
-use super::events::RawOsEvent;
+use super::accessibility::{extract_browser_url_for_window, extract_focused_element_for_window};
+use super::events::{ElementInteractionKind, RawOsEvent};
 use super::window_manager::WindowManager;
 use super::{ObserverError, OsObserver};
 
@@ -143,6 +144,40 @@ impl OsObserver for WindowsObserver {
                 if !hook_focus.is_invalid() {
                     if let Some(hooks) = HOOKS.get() {
                         hooks.lock().push(hook_focus.0 as isize);
+                    }
+                }
+
+                // Hook for invoke interactions (buttons, links, etc.)
+                let hook_invoke = SetWinEventHook(
+                    EVENT_OBJECT_INVOKED,
+                    EVENT_OBJECT_INVOKED,
+                    None,
+                    Some(win_event_callback),
+                    0,
+                    0,
+                    flags,
+                );
+
+                if !hook_invoke.is_invalid() {
+                    if let Some(hooks) = HOOKS.get() {
+                        hooks.lock().push(hook_invoke.0 as isize);
+                    }
+                }
+
+                // Hook for value changes (edit/text fields).
+                let hook_value_change = SetWinEventHook(
+                    EVENT_OBJECT_VALUECHANGE,
+                    EVENT_OBJECT_VALUECHANGE,
+                    None,
+                    Some(win_event_callback),
+                    0,
+                    0,
+                    flags,
+                );
+
+                if !hook_value_change.is_invalid() {
+                    if let Some(hooks) = HOOKS.get() {
+                        hooks.lock().push(hook_value_change.0 as isize);
                     }
                 }
             }
@@ -272,15 +307,39 @@ unsafe extern "system" fn win_event_callback(
     let raw_event = match event {
         e if e == EVENT_SYSTEM_FOREGROUND => RawOsEvent::WindowFocusChanged {
             hwnd: hwnd_val,
-            process_name: window_info.process_name,
+            process_name: window_info.process_name.clone(),
             window_title: window_info.title, // Will be discarded during symbolization
         },
-        e if e == EVENT_OBJECT_FOCUS => {
-            // For object focus, we treat it as a focus change if it's a different window
-            RawOsEvent::ElementFocused {
+        e if e == EVENT_OBJECT_FOCUS || e == EVENT_OBJECT_INVOKED || e == EVENT_OBJECT_VALUECHANGE => {
+            let interaction = if e == EVENT_OBJECT_FOCUS {
+                ElementInteractionKind::Focus
+            } else if e == EVENT_OBJECT_INVOKED {
+                ElementInteractionKind::Invoke
+            } else {
+                ElementInteractionKind::ValueChanged
+            };
+
+            let snapshot = extract_focused_element_for_window(hwnd_val);
+
+            RawOsEvent::ElementInteracted {
                 hwnd: hwnd_val,
-                element_id: format!("focus_{}", hwnd_val),
-                control_type: "Unknown".to_string(),
+                process_name: window_info.process_name.clone(),
+                element_id: snapshot
+                    .as_ref()
+                    .map(|s| s.element_id.clone())
+                    .unwrap_or_else(|| format!("elem_{}", hwnd_val)),
+                control_type: snapshot
+                    .as_ref()
+                    .map(|s| s.control_type.clone())
+                    .unwrap_or_else(|| "Unknown".to_string()),
+                automation_id: snapshot.as_ref().and_then(|s| s.automation_id.clone()),
+                class_name: snapshot.as_ref().and_then(|s| s.class_name.clone()),
+                name_hash: snapshot.as_ref().and_then(|s| s.name_hash.clone()),
+                is_keyboard_focusable: snapshot
+                    .as_ref()
+                    .map(|s| s.is_keyboard_focusable)
+                    .unwrap_or(false),
+                interaction,
             }
         }
         _ => return,

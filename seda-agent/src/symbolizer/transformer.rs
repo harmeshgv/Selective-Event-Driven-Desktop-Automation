@@ -10,7 +10,7 @@
 //! - KeyboardShortcut -> Detect Ctrl+V for PasteText, Ctrl+C for CopyText
 //! - WindowOpened -> OpenApp
 //! - WindowClosed -> CloseApp
-//! - ElementFocused -> Interact or TypeText (depending on element type)
+//! - ElementInteracted -> Interact/TypeText with selector metadata
 
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender};
@@ -18,9 +18,14 @@ use std::thread::{self, JoinHandle};
 
 use chrono::{DateTime, Utc};
 
-use super::actions::{AppIdentifier, ContentType, SymbolicAction};
+use super::actions::{
+    AppIdentifier, ContentType, ElementSelector, ElementType, FieldType, InteractionType,
+    SymbolicAction,
+};
 use super::sanitizer::Sanitizer;
-use crate::observer::events::{ClipboardContentType, Modifier, RawOsEvent, VirtualKey};
+use crate::observer::events::{
+    ClipboardContentType, ElementInteractionKind, Modifier, RawOsEvent, VirtualKey,
+};
 
 /// Record of a symbolic action with timestamp
 #[derive(Debug, Clone)]
@@ -44,6 +49,9 @@ pub struct EventTransformer {
     open_windows: HashMap<isize, AppIdentifier>,
     /// Track last observed browser URL per browser process to reduce duplicates
     last_browser_url: HashMap<String, String>,
+    /// Track last emitted element event to reduce noisy duplicates.
+    last_element_event_key: Option<String>,
+    last_element_event_time: Option<DateTime<Utc>>,
 }
 
 impl EventTransformer {
@@ -56,6 +64,8 @@ impl EventTransformer {
             last_clipboard_type: None,
             open_windows: HashMap::new(),
             last_browser_url: HashMap::new(),
+            last_element_event_key: None,
+            last_element_event_time: None,
         }
     }
 
@@ -169,17 +179,71 @@ impl EventTransformer {
                 Some(SymbolicAction::CloseApp { app })
             }
 
-            RawOsEvent::ElementFocused {
+            RawOsEvent::ElementInteracted {
                 hwnd: _,
-                element_id: _,
+                process_name,
+                element_id,
                 control_type,
+                automation_id,
+                class_name,
+                name_hash,
+                is_keyboard_focusable,
+                interaction,
             } => {
-                // Element focus within the current app
-                // Could be expanded to track specific interaction patterns
-                // For now, we don't emit actions for element focus changes
-                // as they're too granular and would create noise
-                let _ = control_type; // Acknowledge but don't use
-                None
+                let sanitized_name = self.sanitizer.sanitize_process_name(&process_name);
+                let app = AppIdentifier::new(sanitized_name.clone());
+                self.last_app = Some(app.clone());
+
+                let normalized_control_type = normalize_control_type(&control_type);
+                let sanitized_element_id = sanitize_identifier(&element_id, "unknown_element");
+                let selector = ElementSelector {
+                    element_id: sanitized_element_id.clone(),
+                    control_type: normalized_control_type.clone(),
+                    automation_id: sanitize_selector_value(automation_id),
+                    class_name: sanitize_selector_value(class_name),
+                    name_hash: sanitize_selector_value(name_hash),
+                    is_keyboard_focusable,
+                };
+
+                let dedupe_key = format!(
+                    "{}|{}|{}|{}",
+                    sanitized_name,
+                    selector.element_id,
+                    selector.control_type,
+                    interaction_key(interaction)
+                );
+                if self.should_skip_element_event(dedupe_key, now) {
+                    None
+                } else {
+                    let element_type = map_control_type_to_element_type(&selector.control_type);
+
+                    match interaction {
+                        ElementInteractionKind::Focus => Some(SymbolicAction::Interact {
+                            app,
+                            element_type,
+                            interaction: InteractionType::Focus,
+                            selector: Some(selector),
+                        }),
+                        ElementInteractionKind::Invoke => Some(SymbolicAction::Interact {
+                            app,
+                            element_type,
+                            interaction: InteractionType::Click,
+                            selector: Some(selector),
+                        }),
+                        ElementInteractionKind::ValueChanged => {
+                            let field_type = infer_field_type(
+                                &normalized_control_type,
+                                selector.automation_id.as_deref(),
+                                selector.class_name.as_deref(),
+                            );
+                            Some(SymbolicAction::TypeText {
+                                target_app: app,
+                                field_type,
+                                selector: Some(selector),
+                            })
+                        }
+                    }
+                }
             }
 
             RawOsEvent::BrowserNavigation {
@@ -263,6 +327,25 @@ impl EventTransformer {
         self.last_clipboard_type = None;
         self.open_windows.clear();
         self.last_browser_url.clear();
+        self.last_element_event_key = None;
+        self.last_element_event_time = None;
+    }
+
+    fn should_skip_element_event(&mut self, key: String, now: DateTime<Utc>) -> bool {
+        const DEDUPE_WINDOW_MS: i64 = 350;
+
+        if let (Some(last_key), Some(last_time)) =
+            (&self.last_element_event_key, self.last_element_event_time)
+        {
+            let elapsed = now.signed_duration_since(last_time).num_milliseconds();
+            if last_key == &key && elapsed >= 0 && elapsed <= DEDUPE_WINDOW_MS {
+                return true;
+            }
+        }
+
+        self.last_element_event_key = Some(key);
+        self.last_element_event_time = Some(now);
+        false
     }
 }
 
@@ -294,6 +377,130 @@ fn normalize_url(url: &str) -> String {
         format!("https://{}", trimmed)
     } else {
         trimmed.to_string()
+    }
+}
+
+fn interaction_key(interaction: ElementInteractionKind) -> &'static str {
+    match interaction {
+        ElementInteractionKind::Focus => "focus",
+        ElementInteractionKind::Invoke => "invoke",
+        ElementInteractionKind::ValueChanged => "value_changed",
+    }
+}
+
+fn sanitize_identifier(value: &str, fallback: &str) -> String {
+    let cleaned: String = value
+        .trim()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(*c, '_' | '-' | '.' | ':'))
+        .take(80)
+        .collect();
+
+    if cleaned.is_empty() {
+        fallback.to_string()
+    } else {
+        cleaned
+    }
+}
+
+fn sanitize_selector_value(value: Option<String>) -> Option<String> {
+    value.and_then(|raw| {
+        let cleaned: String = raw
+            .trim()
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(*c, '_' | '-' | '.' | ':'))
+            .take(100)
+            .collect();
+        if cleaned.is_empty() {
+            None
+        } else {
+            Some(cleaned)
+        }
+    })
+}
+
+fn normalize_control_type(control_type: &str) -> String {
+    let normalized = control_type.trim();
+    if normalized.is_empty() {
+        "Unknown".to_string()
+    } else {
+        normalized.to_string()
+    }
+}
+
+fn map_control_type_to_element_type(control_type: &str) -> ElementType {
+    let c = control_type.to_lowercase();
+    if c.contains("button") {
+        ElementType::Button
+    } else if c.contains("edit") || c.contains("text") || c.contains("document") {
+        ElementType::TextField
+    } else if c.contains("hyperlink") || c.contains("link") {
+        ElementType::Link
+    } else if c.contains("menuitem") {
+        ElementType::MenuItem
+    } else if c.contains("menu") {
+        ElementType::Menu
+    } else if c.contains("tabitem") || c.contains("tab") {
+        ElementType::Tab
+    } else if c.contains("listitem") {
+        ElementType::ListItem
+    } else if c.contains("treeitem") {
+        ElementType::TreeItem
+    } else if c.contains("checkbox") {
+        ElementType::Checkbox
+    } else if c.contains("radiobutton") {
+        ElementType::RadioButton
+    } else if c.contains("combobox") || c.contains("dropdown") {
+        ElementType::Dropdown
+    } else if c.contains("slider") {
+        ElementType::Slider
+    } else if c.contains("scrollbar") || c.contains("scroll") {
+        ElementType::ScrollBar
+    } else if c.contains("window") || c.contains("pane") {
+        ElementType::Window
+    } else {
+        ElementType::Other
+    }
+}
+
+fn infer_field_type(
+    control_type: &str,
+    automation_id: Option<&str>,
+    class_name: Option<&str>,
+) -> FieldType {
+    let mut combined = control_type.to_lowercase();
+    if let Some(id) = automation_id {
+        combined.push(' ');
+        combined.push_str(&id.to_lowercase());
+    }
+    if let Some(class) = class_name {
+        combined.push(' ');
+        combined.push_str(&class.to_lowercase());
+    }
+
+    if combined.contains("password") || combined.contains("passwd") || combined.contains("passcode")
+    {
+        FieldType::Password
+    } else if combined.contains("email") {
+        FieldType::Email
+    } else if combined.contains("search") || combined.contains("query") || combined.contains("find")
+    {
+        FieldType::Search
+    } else if combined.contains("url")
+        || combined.contains("address")
+        || combined.contains("omnibox")
+    {
+        FieldType::Url
+    } else if combined.contains("code") || combined.contains("editor") {
+        FieldType::Code
+    } else if combined.contains("number") || combined.contains("numeric") || combined.contains("spin")
+    {
+        FieldType::Number
+    } else if combined.contains("edit") || combined.contains("text") || combined.contains("document")
+    {
+        FieldType::Text
+    } else {
+        FieldType::Other
     }
 }
 

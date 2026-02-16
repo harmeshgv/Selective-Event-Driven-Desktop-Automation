@@ -103,6 +103,11 @@
       min-height: 280px;
     }
 
+    .repeated {
+      grid-column: span 12;
+      min-height: 220px;
+    }
+
     .bar {
       display: flex;
       flex-wrap: wrap;
@@ -110,6 +115,31 @@
       align-items: center;
       justify-content: space-between;
       margin-bottom: 12px;
+    }
+
+    .repeated-tools {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .repeated-tools label {
+      font-size: 0.78rem;
+      color: var(--ink-soft);
+      font-family: var(--mono);
+    }
+
+    .repeated-tools input {
+      width: 78px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 5px 7px;
+      font-size: 0.8rem;
+      font-family: var(--mono);
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--ink);
     }
 
     .metrics {
@@ -271,6 +301,38 @@
       border-bottom: none;
     }
 
+    .repeated-row.selected td {
+      background: rgba(21, 83, 141, 0.09);
+    }
+
+    .bundle-seq-btn {
+      width: 100%;
+      text-align: left;
+      border: none;
+      background: transparent;
+      padding: 0;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    .bundle-seq-btn:hover code {
+      text-decoration: underline;
+    }
+
+    .repeated-details {
+      margin-top: 10px;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.76);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--ink-soft);
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }
+
     .graph-surface {
       width: 100%;
       height: 320px;
@@ -355,7 +417,7 @@
     }
 
     @media (max-width: 980px) {
-      .sessions, .graph, .tasks, .controls {
+      .sessions, .graph, .repeated, .tasks, .controls {
         grid-column: span 12;
       }
       table {
@@ -443,6 +505,36 @@
         </div>
       </article>
 
+      <article class="card repeated">
+        <div class="bar">
+          <h2>Repeated Tasks</h2>
+          <div class="repeated-tools">
+            <span class="meta" id="repeatedMeta">No repeated task bundles yet</span>
+            <label for="repeatMinLengthInput">Min repeats</label>
+            <input id="repeatMinLengthInput" type="number" min="2" max="64" step="1" value="3" />
+            <button id="applyRepeatLengthBtn" class="btn-graph" type="button">Apply</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Bundle Sequence</th>
+                <th>Frequency</th>
+                <th>Confidence</th>
+                <th>Avg Duration (ms)</th>
+                <th>Last Seen</th>
+                <th>Inspect</th>
+              </tr>
+            </thead>
+            <tbody id="repeatedBody"></tbody>
+          </table>
+        </div>
+        <div id="repeatedDetails" class="repeated-details">
+          Bundle details: click a bundle sequence to see full steps and summary.
+        </div>
+      </article>
+
       <article class="card tasks">
         <div class="bar">
           <h2>Recent Collected Tasks</h2>
@@ -456,6 +548,9 @@
                 <th>Type</th>
                 <th>Source App</th>
                 <th>Target App</th>
+                <th>Element</th>
+                <th>Interaction</th>
+                <th>Field Type</th>
                 <th>Website</th>
                 <th>Search Query</th>
                 <th>Search Engine</th>
@@ -482,8 +577,13 @@
     const refreshBtn = document.getElementById("refreshBtn");
     const messageEl = document.getElementById("message");
     const sessionsBody = document.getElementById("sessionsBody");
+    const repeatedBody = document.getElementById("repeatedBody");
+    const repeatedDetails = document.getElementById("repeatedDetails");
     const actionsBody = document.getElementById("actionsBody");
     const sessionMeta = document.getElementById("sessionMeta");
+    const repeatedMeta = document.getElementById("repeatedMeta");
+    const repeatMinLengthInput = document.getElementById("repeatMinLengthInput");
+    const applyRepeatLengthBtn = document.getElementById("applyRepeatLengthBtn");
     const graphMeta = document.getElementById("graphMeta");
     const graphControls = document.getElementById("graphControls");
     const replayInfo = document.getElementById("replayInfo");
@@ -498,11 +598,19 @@
     const mode2dBtn = document.getElementById("mode2dBtn");
     const mode3dBtn = document.getElementById("mode3dBtn");
     const svgNs = "http://www.w3.org/2000/svg";
+    const repeatMinLengthStorageKey = "seda.dashboard.repeated.min_repeats";
+    const repeatLegacyStorageKey = "seda.dashboard.repeated.min_frequency";
+    const repeatMinLengthMin = 2;
+    const repeatMinLengthMax = 64;
 
     let lastGraph = { nodes: [], edges: [] };
+    let inspectedRunOnlyGraph = null;
     let latestStatus = null;
     let refreshInProgress = false;
     let actionInProgress = false;
+    let repeatedTasks = [];
+    let repeatedMinLength = 3;
+    let selectedRepeatedPatternHash = null;
     let graphMode = "2d";
     let replayHintMessage = 'Replay: click "Start From First" then "Next" to verify captured flow order.';
     let hoveredNodeId = null;
@@ -550,6 +658,36 @@
       return `${text.slice(0, maxLen - 3)}...`;
     }
 
+    function humanizeActionType(actionType) {
+      return String(textOrDash(actionType)).replaceAll("_", " ");
+    }
+
+    function formatPatternSequence(sequence) {
+      if (!Array.isArray(sequence) || !sequence.length) {
+        return "-";
+      }
+      return sequence.map((item) => humanizeActionType(item)).join(" -> ");
+    }
+
+    function formatElementSelector(action) {
+      const parts = [];
+      if (action?.element_control_type) {
+        parts.push(action.element_control_type);
+      }
+      if (action?.element_automation_id) {
+        parts.push(`#${action.element_automation_id}`);
+      } else if (action?.element_id) {
+        parts.push(`id:${String(action.element_id).slice(0, 12)}`);
+      }
+      if (action?.element_class_name) {
+        parts.push(`.${action.element_class_name}`);
+      }
+      if (!parts.length && action?.element_name_hash) {
+        parts.push(`name:${String(action.element_name_hash).slice(0, 10)}`);
+      }
+      return parts.length ? truncateText(parts.join(" "), 72) : "-";
+    }
+
     function setMessage(message, isError = false) {
       messageEl.textContent = message || "";
       messageEl.classList.toggle("error", isError);
@@ -590,6 +728,65 @@
       };
     }
 
+    function buildReplayOnlyGraph(steps) {
+      const normalizedSteps = Array.isArray(steps) ? steps : [];
+      if (!normalizedSteps.length) {
+        return { nodes: [], edges: [] };
+      }
+
+      const nodeSet = new Set();
+      const nodes = [];
+      const edgeStats = new Map();
+
+      for (const step of normalizedSteps) {
+        const nodeId = toNodeId(step);
+        if (!nodeSet.has(nodeId)) {
+          nodeSet.add(nodeId);
+          nodes.push({ id: nodeId });
+        }
+      }
+
+      for (let i = 1; i < normalizedSteps.length; i += 1) {
+        const prev = normalizedSteps[i - 1];
+        const current = normalizedSteps[i];
+        const from = toNodeId(prev);
+        const to = toNodeId(current);
+        const key = `${from}=>${to}`;
+        const entry = edgeStats.get(key) || {
+          from,
+          to,
+          frequency: 0,
+          durationTotalMs: 0,
+          durationCount: 0,
+          lastSeenMs: 0,
+        };
+
+        entry.frequency += 1;
+        const durationMs = Number(current?.duration_ms);
+        if (Number.isFinite(durationMs) && durationMs >= 0) {
+          entry.durationTotalMs += durationMs;
+          entry.durationCount += 1;
+        }
+
+        const timestampMs = Number(current?.timestamp_ms);
+        if (Number.isFinite(timestampMs) && timestampMs > entry.lastSeenMs) {
+          entry.lastSeenMs = timestampMs;
+        }
+
+        edgeStats.set(key, entry);
+      }
+
+      const edges = Array.from(edgeStats.values()).map((entry) => ({
+        from: entry.from,
+        to: entry.to,
+        frequency: entry.frequency,
+        avg_duration_ms: entry.durationCount > 0 ? entry.durationTotalMs / entry.durationCount : 0,
+        last_seen_ms: entry.lastSeenMs,
+      }));
+
+      return { nodes, edges };
+    }
+
     async function callApi(url, options = {}) {
       const response = await fetch(url, options);
       const text = await response.text();
@@ -617,6 +814,18 @@
       startReplayBtn.disabled = actionInProgress || refreshInProgress;
       nextReplayBtn.disabled = actionInProgress || refreshInProgress;
       playReplayBtn.disabled = actionInProgress || refreshInProgress;
+      if (applyRepeatLengthBtn) {
+        applyRepeatLengthBtn.disabled = actionInProgress || refreshInProgress;
+      }
+      if (repeatMinLengthInput) {
+        repeatMinLengthInput.disabled = actionInProgress || refreshInProgress;
+      }
+
+      const inspectButtons = document.querySelectorAll(".inspect-repeat-btn");
+      inspectButtons.forEach((button) => {
+        const hasRun = button.dataset.hasRun === "1";
+        button.disabled = !hasRun || actionInProgress || refreshInProgress;
+      });
     }
 
     function renderStatus(snapshot) {
@@ -657,10 +866,101 @@
       }
     }
 
+    function renderRepeatedTasks(tasks) {
+      repeatedTasks = Array.isArray(tasks) ? tasks : [];
+      repeatedBody.innerHTML = "";
+      if (
+        selectedRepeatedPatternHash
+        && !repeatedTasks.some((task) => task.pattern_hash === selectedRepeatedPatternHash)
+      ) {
+        selectedRepeatedPatternHash = null;
+      }
+
+      repeatedMeta.textContent = repeatedTasks.length
+        ? `${repeatedTasks.length} repeated bundles detected (sequence length >= ${repeatedMinLength} actions)`
+        : `No repeated task bundles yet (sequence length >= ${repeatedMinLength} actions)`;
+
+      if (!repeatedTasks.length) {
+        repeatedBody.innerHTML = `<tr><td colspan="6">No repeated tasks detected yet for sequence length >= ${repeatedMinLength} actions. Keep collecting and repeat a flow a few times.</td></tr>`;
+        renderRepeatedTaskDetails(null);
+        return;
+      }
+
+      for (const task of repeatedTasks) {
+        const sequenceLabel = task.sequence_label || formatPatternSequence(task.sequence);
+        const hasSampleRun = Array.isArray(task.sample_run) && task.sample_run.length > 0;
+        const isSelected = selectedRepeatedPatternHash && task.pattern_hash === selectedRepeatedPatternHash;
+        const row = document.createElement("tr");
+        row.className = isSelected ? "repeated-row selected" : "repeated-row";
+        row.setAttribute("data-pattern-hash", task.pattern_hash);
+        row.innerHTML = `
+          <td>
+            <button
+              class="bundle-seq-btn"
+              type="button"
+              data-pattern-hash="${task.pattern_hash}"
+              title="Show full sequence details for this bundle"
+            >
+              <code title="${sequenceLabel}">${truncateText(sequenceLabel, 96)}</code>
+            </button>
+          </td>
+          <td>${textOrDash(task.frequency)}</td>
+          <td>${Math.round((task.confidence || 0) * 100)}%</td>
+          <td>${textOrDash(task.avg_duration_ms)}</td>
+          <td>${toLocalTime(task.last_seen_ms)}</td>
+          <td>
+            <button
+              class="btn-graph inspect-repeat-btn"
+              type="button"
+              data-pattern-hash="${task.pattern_hash}"
+              data-has-run="${hasSampleRun ? "1" : "0"}"
+              ${hasSampleRun ? "" : "disabled"}
+              title="${hasSampleRun ? "Load this repeated task into replay" : "No matching run in current flow window"}"
+            >
+              Inspect Run
+            </button>
+          </td>
+        `;
+        repeatedBody.appendChild(row);
+      }
+
+      const selectedTask = selectedRepeatedPatternHash
+        ? repeatedTasks.find((task) => task.pattern_hash === selectedRepeatedPatternHash)
+        : null;
+      renderRepeatedTaskDetails(selectedTask || null);
+    }
+
+    function renderRepeatedTaskDetails(task) {
+      if (!repeatedDetails) {
+        return;
+      }
+
+      if (!task) {
+        repeatedDetails.textContent = "Bundle details: click a bundle sequence to see full steps and summary.";
+        return;
+      }
+
+      const sequence = Array.isArray(task.sequence) ? task.sequence : [];
+      const fullSequence = sequence.length
+        ? sequence.join(" -> ")
+        : (task.sequence_label || formatPatternSequence(task.sequence));
+      const sampleRunLength = Array.isArray(task.sample_run) ? task.sample_run.length : 0;
+      repeatedDetails.textContent = [
+        "Bundle details",
+        `Sequence (${sequence.length || 0} actions): ${fullSequence}`,
+        `Occurrences: ${textOrDash(task.frequency)}`,
+        `Confidence: ${Math.round((task.confidence || 0) * 100)}%`,
+        `Avg Duration (ms): ${textOrDash(task.avg_duration_ms)}`,
+        `First Seen: ${toLocalTime(task.first_seen_ms)}`,
+        `Last Seen: ${toLocalTime(task.last_seen_ms)}`,
+        `Sample Run Steps: ${sampleRunLength}`,
+      ].join("\n");
+    }
+
     function renderActions(actions) {
       actionsBody.innerHTML = "";
       if (!actions || !actions.length) {
-        actionsBody.innerHTML = '<tr><td colspan="9">No actions yet.</td></tr>';
+        actionsBody.innerHTML = '<tr><td colspan="12">No actions yet.</td></tr>';
         return;
       }
 
@@ -671,6 +971,9 @@
           <td>${textOrDash(action.action_type)}</td>
           <td>${textOrDash(action.source_app)}</td>
           <td>${textOrDash(action.target_app)}</td>
+          <td>${formatElementSelector(action)}</td>
+          <td>${textOrDash(action.element_interaction)}</td>
+          <td>${textOrDash(action.element_field_type)}</td>
           <td>${truncateText(action.website_url)}</td>
           <td>${truncateText(action.search_query, 60)}</td>
           <td>${textOrDash(action.search_engine)}</td>
@@ -683,6 +986,54 @@
 
     function clamp(value, min, max) {
       return Math.max(min, Math.min(max, value));
+    }
+
+    function parseRepeatMinLength(value) {
+      const parsed = Number.parseInt(String(value ?? ""), 10);
+      if (!Number.isFinite(parsed)) {
+        return repeatedMinLength;
+      }
+      return clamp(parsed, repeatMinLengthMin, repeatMinLengthMax);
+    }
+
+    function loadRepeatMinLengthSetting() {
+      let stored = null;
+      try {
+        stored = window.localStorage.getItem(repeatMinLengthStorageKey);
+      } catch {
+        stored = null;
+      }
+
+      if (!stored) {
+        try {
+          stored = window.localStorage.getItem(repeatLegacyStorageKey);
+        } catch {
+          stored = null;
+        }
+      }
+
+      repeatedMinLength = parseRepeatMinLength(stored ?? 3);
+      if (repeatMinLengthInput) {
+        repeatMinLengthInput.value = String(repeatedMinLength);
+      }
+    }
+
+    function persistRepeatMinLengthSetting() {
+      try {
+        window.localStorage.setItem(repeatMinLengthStorageKey, String(repeatedMinLength));
+      } catch {
+        // Ignore storage write failures.
+      }
+    }
+
+    async function applyRepeatMinLengthSetting() {
+      repeatedMinLength = parseRepeatMinLength(repeatMinLengthInput?.value);
+      if (repeatMinLengthInput) {
+        repeatMinLengthInput.value = String(repeatedMinLength);
+      }
+      persistRepeatMinLengthSetting();
+      await refreshRepeatedTasks();
+      setMessage(`Updated minimum repeated sequence length to ${repeatedMinLength} actions.`);
     }
 
     function getCanvasSize() {
@@ -1262,10 +1613,11 @@
     }
 
     function drawGraph(graph) {
+      const graphToRender = inspectedRunOnlyGraph || graph || { nodes: [], edges: [] };
       if (graphMode === "2d") {
-        drawGraph2d(graph);
+        drawGraph2d(graphToRender);
       } else {
-        drawGraph3d(graph);
+        drawGraph3d(graphToRender);
       }
     }
 
@@ -1306,6 +1658,16 @@
       drawGraph(lastGraph);
     }
 
+    async function refreshRepeatedTasks() {
+      const query = new URLSearchParams({
+        min_repeats: String(repeatedMinLength),
+        limit: "25",
+        flow_limit: "5000",
+      });
+      const tasks = await callApi(`/api/dashboard/repeated_tasks?${query.toString()}`);
+      renderRepeatedTasks(tasks || []);
+    }
+
     async function loadReplaySteps() {
       const flow = await callApi("/api/dashboard/flow?limit=2500");
       replayState.steps = (flow || []).map((action) => ({
@@ -1315,6 +1677,43 @@
       if (replayState.index >= replayState.steps.length) {
         replayState.index = replayState.steps.length - 1;
       }
+    }
+
+    async function inspectRepeatedTask(patternHash) {
+      const bundle = repeatedTasks.find((item) => item.pattern_hash === patternHash);
+      if (!bundle) {
+        setMessage("Repeated task was not found. Refresh and try again.", true);
+        return;
+      }
+
+      stopReplayAutoPlay();
+
+      const run = Array.isArray(bundle.sample_run) ? bundle.sample_run : [];
+      if (!run.length) {
+        replayState.steps = [];
+        replayState.index = -1;
+        inspectedRunOnlyGraph = null;
+        replayHintMessage = "Selected repeated task has no matched run in current flow window.";
+        selectedRepeatedPatternHash = patternHash;
+        renderRepeatedTasks(repeatedTasks);
+        drawGraph(lastGraph);
+        setMessage("No representative run found for this repeated task in recent flow data.", true);
+        return;
+      }
+
+      replayState.steps = run.map((action) => ({
+        ...action,
+        node_id: toNodeId(action),
+      }));
+      replayState.index = 0;
+      inspectedRunOnlyGraph = buildReplayOnlyGraph(replayState.steps);
+      selectedRepeatedPatternHash = patternHash;
+      renderRepeatedTasks(repeatedTasks);
+      replayHintMessage = `Repeated task loaded: ${bundle.sequence_label || formatPatternSequence(bundle.sequence)} | Inspect mode shows only this flow. Click Next to verify each step.`;
+      drawGraph(lastGraph);
+      setMessage(
+        `Loaded repeated task run (${bundle.frequency} occurrences, ${replayState.steps.length} steps in this run).`
+      );
     }
 
     function stopReplayAutoPlay() {
@@ -1339,6 +1738,9 @@
     async function startReplayFromFirst() {
       stopReplayAutoPlay();
       await loadReplaySteps();
+      inspectedRunOnlyGraph = null;
+      selectedRepeatedPatternHash = null;
+      renderRepeatedTasks(repeatedTasks);
 
       if (!replayState.steps.length) {
         replayState.index = -1;
@@ -1400,7 +1802,10 @@
       stopReplayAutoPlay();
       replayState.steps = [];
       replayState.index = -1;
+      inspectedRunOnlyGraph = null;
+      selectedRepeatedPatternHash = null;
       replayHintMessage = reasonMessage || 'Replay: click "Start From First" then "Next" to verify captured flow order.';
+      renderRepeatedTasks(repeatedTasks);
       drawGraph(lastGraph);
     }
 
@@ -1411,7 +1816,12 @@
       refreshInProgress = true;
       syncControlButtons();
       try {
-        await Promise.all([refreshStatus(), refreshActions(), refreshGraph()]);
+        await Promise.all([
+          refreshStatus(),
+          refreshActions(),
+          refreshGraph(),
+          refreshRepeatedTasks(),
+        ]);
         setMessage(`Last refreshed at ${new Date().toLocaleTimeString()}`);
       } catch (err) {
         setMessage(err.message, true);
@@ -1432,7 +1842,12 @@
         const data = await callApi(url, { method: "POST" });
         renderStatus(data);
         renderSessions(data);
-        await Promise.all([refreshActions(), refreshGraph(), refreshStatus()]);
+        await Promise.all([
+          refreshActions(),
+          refreshGraph(),
+          refreshRepeatedTasks(),
+          refreshStatus(),
+        ]);
 
         if (url.includes("/api/dashboard/clear")) {
           resetReplayState("Replay reset: collected flow was cleared.");
@@ -1612,6 +2027,53 @@
         setMessage(`Fullscreen error: ${err.message}`, true);
       }
     });
+    repeatedBody.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const sequenceButton = target.closest(".bundle-seq-btn");
+      if (sequenceButton) {
+        const patternHash = sequenceButton.getAttribute("data-pattern-hash");
+        if (!patternHash) {
+          return;
+        }
+        selectedRepeatedPatternHash = patternHash;
+        renderRepeatedTasks(repeatedTasks);
+        return;
+      }
+      const button = target.closest(".inspect-repeat-btn");
+      if (!button) {
+        return;
+      }
+      const patternHash = button.getAttribute("data-pattern-hash");
+      if (!patternHash) {
+        return;
+      }
+      try {
+        await inspectRepeatedTask(patternHash);
+      } catch (err) {
+        setMessage(err.message, true);
+      }
+    });
+    applyRepeatLengthBtn.addEventListener("click", async () => {
+      try {
+        await applyRepeatMinLengthSetting();
+      } catch (err) {
+        setMessage(err.message, true);
+      }
+    });
+    repeatMinLengthInput.addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter") {
+        return;
+      }
+      event.preventDefault();
+      try {
+        await applyRepeatMinLengthSetting();
+      } catch (err) {
+        setMessage(err.message, true);
+      }
+    });
     clearBtn.addEventListener("click", async () => {
       const confirmed = window.confirm(
         "Clear all collected actions, graph data, and dashboard session history?"
@@ -1645,6 +2107,7 @@
       resetGraphCamera();
     });
     document.addEventListener("fullscreenchange", () => syncFullscreenButton());
+    loadRepeatMinLengthSetting();
     setGraphMode("2d");
     updateGraphCursor();
     syncFullscreenButton();

@@ -15,6 +15,8 @@ pub mod actions;
 pub mod sanitizer;
 pub mod transformer;
 
-pub use actions::{AppCategory, AppIdentifier, ContentType, SymbolicAction, SymbolicActionType};
+pub use actions::{
+    AppCategory, AppIdentifier, ContentType, ElementSelector, SymbolicAction, SymbolicActionType,
+};
 pub use sanitizer::Sanitizer;
 pub use transformer::EventTransformer;

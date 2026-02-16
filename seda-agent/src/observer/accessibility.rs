@@ -51,6 +51,17 @@ pub struct ElementBounds {
     pub height: i32,
 }
 
+/// Minimal selector snapshot for focused/interacted UI elements.
+#[derive(Debug, Clone)]
+pub struct FocusedElementSnapshot {
+    pub element_id: String,
+    pub control_type: String,
+    pub automation_id: Option<String>,
+    pub class_name: Option<String>,
+    pub name_hash: Option<String>,
+    pub is_keyboard_focusable: bool,
+}
+
 /// Wrapper around Windows UI Automation
 pub struct AccessibilityTree {
     automation: UIAutomation,
@@ -282,6 +293,77 @@ impl AccessibilityTree {
 
         self.build_element_tree(&focused, 1, 0)
     }
+}
+
+/// Best-effort extraction of focused element selector metadata for a window.
+///
+/// Returns `None` if focus is outside the provided window or if UI Automation
+/// cannot provide enough data.
+pub fn extract_focused_element_for_window(hwnd: isize) -> Option<FocusedElementSnapshot> {
+    let automation = UIAutomation::new().ok()?;
+    let focused = automation.get_focused_element().ok()?;
+
+    // Keep only focus events that belong to this top-level window.
+    if let Ok(native_handle) = focused.get_native_window_handle() {
+        let native_hwnd: isize = native_handle.into();
+        if native_hwnd != 0 && native_hwnd != hwnd {
+            return None;
+        }
+    }
+
+    let control_type = focused
+        .get_control_type()
+        .map(|ct| format!("{:?}", ct))
+        .unwrap_or_else(|_| "Unknown".to_string());
+
+    let automation_id = focused.get_automation_id().ok().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    });
+
+    let class_name = focused.get_classname().ok().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    });
+
+    let name_hash = focused.get_name().ok().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(hash_string(trimmed))
+        }
+    });
+
+    let is_keyboard_focusable = focused.is_keyboard_focusable().unwrap_or(false);
+
+    let element_id = focused
+        .get_runtime_id()
+        .map(|ids| {
+            let mut hasher = Sha256::new();
+            for id in ids {
+                hasher.update(id.to_le_bytes());
+            }
+            hex::encode(hasher.finalize())[..16].to_string()
+        })
+        .unwrap_or_else(|_| uuid::Uuid::new_v4().to_string());
+
+    Some(FocusedElementSnapshot {
+        element_id,
+        control_type,
+        automation_id,
+        class_name,
+        name_hash,
+        is_keyboard_focusable,
+    })
 }
 
 /// Best-effort extraction of a browser URL from a window using UI Automation.

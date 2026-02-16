@@ -216,6 +216,16 @@ impl Repository {
         Ok(actions)
     }
 
+    /// Get the latest actions ordered oldest-to-newest within the requested window.
+    pub fn get_recent_actions_chronological(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<StoredAction>, RepositoryError> {
+        let mut actions = self.get_recent_actions(limit)?;
+        actions.reverse();
+        Ok(actions)
+    }
+
     /// Count total actions
     pub fn count_actions(&self) -> Result<i64, RepositoryError> {
         let count: i64 = self.conn.query_row(
@@ -551,6 +561,7 @@ pub enum RepositoryError {
 mod tests {
     use super::*;
     use crate::symbolizer::{AppIdentifier, ContentType};
+    use chrono::TimeZone;
 
     #[test]
     fn test_store_and_retrieve_action() {
@@ -567,6 +578,45 @@ mod tests {
         let actions = repo.get_recent_actions(10).unwrap();
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].action_type, "SWITCH_APP");
+    }
+
+    #[test]
+    fn test_get_recent_actions_chronological_returns_oldest_to_newest() {
+        let repo = Repository::open_in_memory().unwrap();
+
+        let action1 = SymbolicAction::SwitchApp {
+            from_app: AppIdentifier::new("chrome.exe"),
+            to_app: AppIdentifier::new("code.exe"),
+        };
+        let action2 = SymbolicAction::CopyText {
+            source_app: AppIdentifier::new("chrome.exe"),
+            content_type: ContentType::PlainText,
+        };
+        let action3 = SymbolicAction::PasteText {
+            target_app: AppIdentifier::new("code.exe"),
+        };
+
+        let t1 = Utc
+            .timestamp_millis_opt(1_710_000_000_000)
+            .single()
+            .unwrap();
+        let t2 = Utc
+            .timestamp_millis_opt(1_710_000_001_000)
+            .single()
+            .unwrap();
+        let t3 = Utc
+            .timestamp_millis_opt(1_710_000_002_000)
+            .single()
+            .unwrap();
+
+        repo.store_action(&action1, t1, Some(40)).unwrap();
+        repo.store_action(&action2, t2, Some(50)).unwrap();
+        repo.store_action(&action3, t3, Some(60)).unwrap();
+
+        let recent = repo.get_recent_actions_chronological(2).unwrap();
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[0].action_type, "COPY_TEXT");
+        assert_eq!(recent[1].action_type, "PASTE_TEXT");
     }
 
     #[test]

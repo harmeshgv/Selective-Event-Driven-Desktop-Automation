@@ -164,7 +164,7 @@ async fn main() -> Result<()> {
 
                 // Periodically check for patterns and store them
                 let miner_stats = miner.read().stats();
-                if miner_stats.buffer_size % 50 == 0 && miner_stats.buffer_size > 0 {
+                if miner_stats.buffer_size % 10 == 0 && miner_stats.buffer_size > 0 {
                     let patterns = miner.read().get_frequent_patterns();
                     for pattern in patterns {
                         if pattern.frequency >= config.min_pattern_frequency {

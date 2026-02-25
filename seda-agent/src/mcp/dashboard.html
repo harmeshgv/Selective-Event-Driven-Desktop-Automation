@@ -333,6 +333,241 @@
       line-height: 1.45;
     }
 
+    .repeated-detail-tools {
+      margin-top: 8px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .explain-panel {
+      margin-top: 10px;
+      border: 1px solid rgba(21, 83, 141, 0.32);
+      border-left: 4px solid var(--accent);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(21, 83, 141, 0.08);
+    }
+
+    .explain-panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+
+    .explain-panel-title {
+      font-weight: 700;
+      color: var(--accent-strong);
+      font-size: 0.9rem;
+    }
+
+    .explain-panel-text {
+      white-space: pre-wrap;
+      line-height: 1.45;
+      color: var(--ink);
+      font-size: 0.87rem;
+    }
+
+    .explain-noise {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(21, 83, 141, 0.2);
+      background: rgba(255, 255, 255, 0.7);
+      color: var(--ink-soft);
+      font-size: 0.81rem;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+
+    .explain-suggestion-title {
+      margin-top: 10px;
+      font-weight: 700;
+      color: var(--accent-strong);
+      font-size: 0.84rem;
+    }
+
+    .explain-suggestion-buttons {
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .explain-suggestion-btn {
+      border: 1px solid rgba(21, 83, 141, 0.26);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.86);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 0.82rem;
+      line-height: 1.3;
+      padding: 8px 10px;
+      text-align: left;
+    }
+
+    .explain-suggestion-btn.active {
+      border-color: rgba(21, 83, 141, 0.7);
+      background: rgba(21, 83, 141, 0.14);
+      color: var(--accent-strong);
+    }
+
+    .explain-selected {
+      margin-top: 8px;
+      color: var(--ink-soft);
+      font-size: 0.79rem;
+      white-space: pre-wrap;
+      line-height: 1.35;
+    }
+
+    .plan-title {
+      margin-top: 12px;
+      font-weight: 700;
+      color: var(--accent-strong);
+      font-size: 0.84rem;
+    }
+
+    .plan-tools {
+      margin-top: 6px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .human-plan-list {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .human-plan-empty {
+      border: 1px dashed rgba(21, 83, 141, 0.26);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.7);
+      color: var(--ink-soft);
+      font-size: 0.8rem;
+      padding: 8px 10px;
+    }
+
+    .human-plan-item {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 8px;
+    }
+
+    .human-plan-index {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid rgba(21, 83, 141, 0.26);
+      background: rgba(255, 255, 255, 0.8);
+      color: var(--accent-strong);
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 2px;
+    }
+
+    .human-plan-input {
+      width: 100%;
+      min-height: 34px;
+      resize: vertical;
+      border: 1px solid rgba(21, 83, 141, 0.22);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 0.82rem;
+      line-height: 1.35;
+      padding: 7px 9px;
+    }
+
+    .human-plan-remove-btn {
+      border: 1px solid rgba(156, 47, 47, 0.3);
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--danger);
+      font-size: 0.78rem;
+      line-height: 1;
+      padding: 7px 9px;
+    }
+
+    .llm-plan-list {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .llm-plan-item {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      align-items: start;
+      gap: 8px;
+    }
+
+    .llm-plan-text {
+      border: 1px solid rgba(21, 83, 141, 0.2);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.84);
+      color: var(--ink);
+      font-size: 0.82rem;
+      line-height: 1.35;
+      padding: 8px 10px;
+      white-space: pre-wrap;
+    }
+
+    .explain-debug {
+      margin-top: 10px;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.7);
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      color: var(--ink-soft);
+      max-height: 220px;
+      overflow: auto;
+      white-space: pre-wrap;
+      line-height: 1.4;
+    }
+
+    .explain-debug.hidden {
+      display: none;
+    }
+
+    .automation-step-buttons {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .automation-step-btn {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+
+    .automation-step-btn.active {
+      background: rgba(21, 83, 141, 0.12);
+      border-color: rgba(21, 83, 141, 0.5);
+      color: var(--accent-strong);
+    }
+
     .graph-surface {
       width: 100%;
       height: 320px;
@@ -525,14 +760,50 @@
                 <th>Avg Duration (ms)</th>
                 <th>Last Seen</th>
                 <th>Inspect</th>
+                <th>Explain</th>
               </tr>
             </thead>
             <tbody id="repeatedBody"></tbody>
           </table>
         </div>
+        <div id="explainPanel" class="explain-panel">
+          <div class="explain-panel-head">
+            <span class="explain-panel-title">AI Explanation</span>
+            <span id="explainPanelMeta" class="meta">No bundle selected</span>
+          </div>
+          <div id="explainPanelText" class="explain-panel-text">
+            Select a bundle sequence and click Explain to generate a plain-language summary.
+          </div>
+          <div id="explainPanelNoise" class="explain-noise">
+            Mixed-step note: AI can separate repeated core steps from unrelated middle actions.
+          </div>
+          <div class="explain-suggestion-title">AI Suggestions (pick the closest intent)</div>
+          <div id="explainSuggestionButtons" class="explain-suggestion-buttons"></div>
+          <div id="explainSelectedSummary" class="explain-selected">
+            Selected suggestion: none.
+          </div>
+          <div class="plan-title">Automation Plan (Step-by-Step, Editable)</div>
+          <div class="plan-tools">
+            <button id="addHumanPlanStepBtn" class="btn-graph" type="button">Add Step</button>
+            <button id="resetHumanPlanBtn" class="btn-graph" type="button">Reset Plan</button>
+          </div>
+          <div id="humanPlanList" class="human-plan-list"></div>
+          <div class="plan-title">LLM Automation Plan (AI Suggested)</div>
+          <div class="plan-tools">
+            <button id="applyLlmPlanBtn" class="btn-graph" type="button">Use LLM Plan In Editable</button>
+          </div>
+          <div id="llmPlanList" class="llm-plan-list"></div>
+        </div>
         <div id="repeatedDetails" class="repeated-details">
           Bundle details: click a bundle sequence to see full steps and summary.
         </div>
+        <div id="repeatedStepButtons" class="automation-step-buttons"></div>
+        <div class="repeated-detail-tools">
+          <button id="toggleExplainDebugBtn" class="btn-graph" type="button">Explain Debug: Off</button>
+          <button id="copyBundleJsonBtn" class="btn-graph" type="button" disabled>Copy JSON</button>
+        </div>
+        <div id="explainDebugPanel" class="explain-debug hidden">Explain debug is currently off.</div>
+
       </article>
 
       <article class="card tasks">
@@ -579,6 +850,20 @@
     const sessionsBody = document.getElementById("sessionsBody");
     const repeatedBody = document.getElementById("repeatedBody");
     const repeatedDetails = document.getElementById("repeatedDetails");
+    const explainPanelMeta = document.getElementById("explainPanelMeta");
+    const explainPanelText = document.getElementById("explainPanelText");
+    const explainPanelNoise = document.getElementById("explainPanelNoise");
+    const explainSuggestionButtons = document.getElementById("explainSuggestionButtons");
+    const explainSelectedSummary = document.getElementById("explainSelectedSummary");
+    const humanPlanList = document.getElementById("humanPlanList");
+    const addHumanPlanStepBtn = document.getElementById("addHumanPlanStepBtn");
+    const resetHumanPlanBtn = document.getElementById("resetHumanPlanBtn");
+    const llmPlanList = document.getElementById("llmPlanList");
+    const applyLlmPlanBtn = document.getElementById("applyLlmPlanBtn");
+    const repeatedStepButtons = document.getElementById("repeatedStepButtons");
+    const toggleExplainDebugBtn = document.getElementById("toggleExplainDebugBtn");
+    const explainDebugPanel = document.getElementById("explainDebugPanel");
+    const copyBundleJsonBtn = document.getElementById("copyBundleJsonBtn");
     const actionsBody = document.getElementById("actionsBody");
     const sessionMeta = document.getElementById("sessionMeta");
     const repeatedMeta = document.getElementById("repeatedMeta");
@@ -610,7 +895,23 @@
     let actionInProgress = false;
     let repeatedTasks = [];
     let repeatedMinLength = 3;
+    let automationProvider = {
+      provider: "disabled",
+      model: "disabled",
+      timeout_seconds: 30,
+      enabled: false,
+      disabled_reason: "LLM provider is disabled",
+      min_steps_threshold: 15,
+    };
+    const explanationByPatternHash = new Map();
+    const selectedSuggestionByPatternHash = new Map();
+    const humanPlanByPatternHash = new Map();
+    const explainDebugEntries = [];
+    const explainDebugMaxEntries = 80;
+    let explainDebugEnabled = false;
     let selectedRepeatedPatternHash = null;
+    let selectedAutomationStepIndex = -1;
+    let selectedBundleAutomationJson = "";
     let graphMode = "2d";
     let replayHintMessage = 'Replay: click "Start From First" then "Next" to verify captured flow order.';
     let hoveredNodeId = null;
@@ -691,6 +992,389 @@
     function setMessage(message, isError = false) {
       messageEl.textContent = message || "";
       messageEl.classList.toggle("error", isError);
+    }
+
+    function safeJsonStringify(value) {
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch {
+        return String(value);
+      }
+    }
+
+    function truncateForDebug(text, maxLen = 3200) {
+      const value = String(text ?? "");
+      if (value.length <= maxLen) {
+        return value;
+      }
+      return `${value.slice(0, maxLen)}\n... (truncated)`;
+    }
+
+    function renderExplainDebugPanel() {
+      if (!toggleExplainDebugBtn || !explainDebugPanel) {
+        return;
+      }
+
+      toggleExplainDebugBtn.textContent = explainDebugEnabled
+        ? "Explain Debug: On"
+        : "Explain Debug: Off";
+
+      if (!explainDebugEnabled) {
+        explainDebugPanel.classList.add("hidden");
+        explainDebugPanel.textContent = "Explain debug is currently off.";
+        return;
+      }
+
+      explainDebugPanel.classList.remove("hidden");
+      if (!explainDebugEntries.length) {
+        explainDebugPanel.textContent = "No explain events yet.";
+        return;
+      }
+
+      explainDebugPanel.textContent = explainDebugEntries
+        .map((entry) => {
+          const level = entry.isError ? "ERROR" : "INFO";
+          return `[${entry.time}] ${level} ${entry.event}\n${entry.payload}`;
+        })
+        .join("\n\n");
+      explainDebugPanel.scrollTop = 0;
+    }
+
+    function addExplainDebug(event, payload = null, isError = false) {
+      const serializedPayload = payload === null || payload === undefined
+        ? "-"
+        : truncateForDebug(safeJsonStringify(payload));
+      explainDebugEntries.unshift({
+        time: new Date().toLocaleTimeString(),
+        event: String(event || "explain"),
+        payload: serializedPayload,
+        isError: !!isError,
+      });
+      if (explainDebugEntries.length > explainDebugMaxEntries) {
+        explainDebugEntries.length = explainDebugMaxEntries;
+      }
+      renderExplainDebugPanel();
+    }
+
+    function getExplanationSuggestions(explanation) {
+      if (!explanation || !Array.isArray(explanation.suggestions)) {
+        return [];
+      }
+      return explanation.suggestions
+        .map((value) => String(value || "").trim())
+        .filter((value) => !!value)
+        .slice(0, 3);
+    }
+
+    function normalizePlanStepText(value, fallback = "Describe this step.") {
+      const text = String(value || "").replace(/\s+/g, " ").trim();
+      if (!text) {
+        return fallback;
+      }
+      return /[.!?]$/.test(text) ? text : `${text}.`;
+    }
+
+    function normalizePlanDraftText(value, fallback = "Describe this step.") {
+      const text = String(value || "").replace(/\s+/g, " ").trim();
+      return text || fallback;
+    }
+
+    function shortenPlanValue(value, maxLen = 72) {
+      const text = String(value || "").replace(/\s+/g, " ").trim();
+      if (!text) {
+        return "";
+      }
+      return text.length <= maxLen ? text : `${text.slice(0, maxLen - 3)}...`;
+    }
+
+    function readableActionName(action) {
+      return String(action || "action")
+        .toLowerCase()
+        .replaceAll("_", " ");
+    }
+
+    function getSelectedRepeatedTask() {
+      if (!selectedRepeatedPatternHash) {
+        return null;
+      }
+      return repeatedTasks.find((task) => task.pattern_hash === selectedRepeatedPatternHash) || null;
+    }
+
+    function getLlmPlanSteps(explanation) {
+      if (!explanation || !Array.isArray(explanation.llm_plan_steps)) {
+        return [];
+      }
+      return explanation.llm_plan_steps
+        .map((value) => normalizePlanDraftText(value, "Describe this step."))
+        .filter((value) => !!value)
+        .slice(0, 40);
+    }
+
+    function renderLlmPlan(task, explanation) {
+      if (!llmPlanList) {
+        return;
+      }
+
+      llmPlanList.innerHTML = "";
+      if (!task) {
+        const empty = document.createElement("div");
+        empty.className = "human-plan-empty";
+        empty.textContent = "Select a repeated bundle and click Explain to see AI-suggested step-by-step automation plan.";
+        llmPlanList.appendChild(empty);
+        return;
+      }
+
+      const llmSteps = getLlmPlanSteps(explanation);
+      if (!llmSteps.length) {
+        const empty = document.createElement("div");
+        empty.className = "human-plan-empty";
+        empty.textContent = "No LLM plan yet. Click Explain to generate it.";
+        llmPlanList.appendChild(empty);
+        return;
+      }
+
+      for (let index = 0; index < llmSteps.length; index += 1) {
+        const item = document.createElement("div");
+        item.className = "llm-plan-item";
+
+        const badge = document.createElement("span");
+        badge.className = "human-plan-index";
+        badge.textContent = String(index + 1);
+        item.appendChild(badge);
+
+        const text = document.createElement("div");
+        text.className = "llm-plan-text";
+        text.textContent = llmSteps[index];
+        item.appendChild(text);
+
+        llmPlanList.appendChild(item);
+      }
+    }
+
+    function humanPlanStepFromAutomation(step, index) {
+      const action = String(step?.action || "").toUpperCase();
+      const app = shortenPlanValue(
+        step?.target_app
+        || step?.source_app
+        || step?.precondition?.app
+      );
+      const domain = shortenPlanValue(
+        step?.precondition?.url_domain
+        || step?.action_args?.website_url
+      );
+      const query = shortenPlanValue(step?.action_args?.search_query, 60);
+      const field = shortenPlanValue(step?.action_args?.field_type || step?.ui_context?.control_type, 44);
+      const interaction = shortenPlanValue(step?.action_args?.interaction || step?.ui_context?.interaction, 44);
+
+      switch (action) {
+        case "OPEN_APP":
+          return normalizePlanStepText(`Open ${app || "the required app"}`);
+        case "VISIT_WEBSITE":
+          return normalizePlanStepText(
+            domain
+              ? `Open ${domain} in your browser`
+              : `Open the required website`
+          );
+        case "SEARCH_WEB":
+          if (query && domain) {
+            return normalizePlanStepText(`Search "${query}" on ${domain}`);
+          }
+          if (query) {
+            return normalizePlanStepText(`Search for "${query}"`);
+          }
+          return normalizePlanStepText("Search for the required item");
+        case "TYPE_TEXT":
+          if (field && domain) {
+            return normalizePlanStepText(`Enter the required details in the ${field} field on ${domain}`);
+          }
+          if (field) {
+            return normalizePlanStepText(`Enter the required details in the ${field} field`);
+          }
+          return normalizePlanStepText(`Enter the required details${app ? ` in ${app}` : ""}`);
+        case "INTERACT":
+          if (interaction && domain) {
+            return normalizePlanStepText(`${interaction} on ${domain}`);
+          }
+          if (interaction) {
+            return normalizePlanStepText(`${interaction}${app ? ` in ${app}` : ""}`);
+          }
+          return normalizePlanStepText(`Continue the next action${app ? ` in ${app}` : ""}`);
+        case "SWITCH_APP":
+          return normalizePlanStepText(`Switch to ${app || "the required app"}`);
+        case "COPY_TEXT":
+          return normalizePlanStepText(`Copy required text${app ? ` from ${app}` : ""}`);
+        case "PASTE_TEXT":
+          return normalizePlanStepText(`Paste the copied text${app ? ` into ${app}` : ""}`);
+        case "CLOSE_APP":
+          return normalizePlanStepText(`Close ${app || "the app"} when finished`);
+        default:
+          return normalizePlanStepText(
+            `Step ${index + 1}: ${readableActionName(action)}${app ? ` in ${app}` : ""}`,
+            `Step ${index + 1}: describe this action.`
+          );
+      }
+    }
+
+    function buildDefaultHumanPlan(task) {
+      if (!task) {
+        return [];
+      }
+
+      const automationSteps = Array.isArray(task.automation_steps) ? task.automation_steps : [];
+      const plan = automationSteps
+        .slice(0, 40)
+        .map((step, index) => humanPlanStepFromAutomation(step, index))
+        .filter((value) => !!value);
+
+      if (plan.length) {
+        return plan;
+      }
+
+      const sequence = Array.isArray(task.sequence) ? task.sequence : [];
+      for (let index = 0; index < sequence.length; index += 1) {
+        const action = readableActionName(sequence[index]);
+        plan.push(normalizePlanStepText(`Step ${index + 1}: ${action}`));
+      }
+
+      if (!plan.length) {
+        plan.push("Open the required app and complete the repeated workflow.");
+      }
+      return plan;
+    }
+
+    function ensureHumanPlan(task, forceReset = false) {
+      if (!task || !task.pattern_hash) {
+        return [];
+      }
+
+      if (forceReset || !humanPlanByPatternHash.has(task.pattern_hash)) {
+        humanPlanByPatternHash.set(task.pattern_hash, buildDefaultHumanPlan(task));
+      }
+
+      const plan = humanPlanByPatternHash.get(task.pattern_hash);
+      if (!Array.isArray(plan) || !plan.length) {
+        const fallback = buildDefaultHumanPlan(task);
+        humanPlanByPatternHash.set(task.pattern_hash, fallback);
+        return fallback;
+      }
+      return plan;
+    }
+
+    function renderHumanPlan(task) {
+      if (!humanPlanList) {
+        return;
+      }
+
+      humanPlanList.innerHTML = "";
+      if (!task) {
+        const empty = document.createElement("div");
+        empty.className = "human-plan-empty";
+        empty.textContent = "Pick a repeated bundle and click Explain. Step-by-step automation plan will appear here.";
+        humanPlanList.appendChild(empty);
+        return;
+      }
+
+      const plan = ensureHumanPlan(task);
+      if (!plan.length) {
+        const empty = document.createElement("div");
+        empty.className = "human-plan-empty";
+        empty.textContent = "No plan steps available yet.";
+        humanPlanList.appendChild(empty);
+        return;
+      }
+
+      for (let index = 0; index < plan.length; index += 1) {
+        const item = document.createElement("div");
+        item.className = "human-plan-item";
+
+        const badge = document.createElement("span");
+        badge.className = "human-plan-index";
+        badge.textContent = String(index + 1);
+        item.appendChild(badge);
+
+        const input = document.createElement("textarea");
+        input.className = "human-plan-input";
+        input.setAttribute("data-plan-index", String(index));
+        input.rows = 2;
+        input.value = plan[index];
+        item.appendChild(input);
+
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "human-plan-remove-btn";
+        removeBtn.setAttribute("data-plan-remove-index", String(index));
+        removeBtn.disabled = plan.length <= 1;
+        removeBtn.textContent = "Remove";
+        item.appendChild(removeBtn);
+
+        humanPlanList.appendChild(item);
+      }
+    }
+
+    function renderSuggestionButtons(task, explanation) {
+      if (!explainSuggestionButtons || !explainSelectedSummary) {
+        return;
+      }
+
+      explainSuggestionButtons.innerHTML = "";
+      const suggestions = getExplanationSuggestions(explanation);
+      if (!task || !suggestions.length) {
+        explainSelectedSummary.textContent = "Selected suggestion: none.";
+        return;
+      }
+
+      let selectedIndex = selectedSuggestionByPatternHash.get(task.pattern_hash);
+      if (!Number.isFinite(selectedIndex) || selectedIndex < 0 || selectedIndex >= suggestions.length) {
+        selectedIndex = 0;
+        selectedSuggestionByPatternHash.set(task.pattern_hash, selectedIndex);
+      }
+
+      for (let index = 0; index < suggestions.length; index += 1) {
+        const suggestion = suggestions[index];
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = index === selectedIndex
+          ? "explain-suggestion-btn active"
+          : "explain-suggestion-btn";
+        button.setAttribute("data-suggestion-index", String(index));
+        button.textContent = `${index + 1}. ${suggestion}`;
+        explainSuggestionButtons.appendChild(button);
+      }
+
+      explainSelectedSummary.textContent = `Selected suggestion: ${selectedIndex + 1}. ${suggestions[selectedIndex]}`;
+    }
+
+    function renderExplainPanel(task, explanation) {
+      if (!explainPanelMeta || !explainPanelText || !explainPanelNoise) {
+        return;
+      }
+
+      if (!task) {
+        explainPanelMeta.textContent = "No bundle selected";
+        explainPanelText.textContent = "Select a bundle sequence and click Explain to generate a plain-language summary.";
+        explainPanelNoise.textContent = "Mixed-step note: AI can separate repeated core steps from unrelated middle actions.";
+        renderSuggestionButtons(null, null);
+        return;
+      }
+
+      if (!explanation) {
+        explainPanelMeta.textContent = "No explanation yet";
+        explainPanelText.textContent = "Click Explain for this bundle to send collected data to the LLM and show a plain-language summary here.";
+        explainPanelNoise.textContent = "Mixed-step note: once Explain runs, AI will tell you if middle actions look unrelated/noisy.";
+        renderSuggestionButtons(task, null);
+        return;
+      }
+
+      const createdAtLabel = explanation._created_at_ms
+        ? new Date(explanation._created_at_ms).toLocaleTimeString()
+        : "-";
+      explainPanelMeta.textContent =
+        `Intent: ${explanation.intent || "-"} | Model: ${explanation.provider || "unknown"}:${explanation.model || "unknown"} | Updated: ${createdAtLabel}`;
+      explainPanelText.textContent = explanation.note || "No explanation note returned by model.";
+      explainPanelNoise.textContent = explanation.noise_explanation
+        ? `Mixed-step note: ${explanation.noise_explanation}`
+        : "Mixed-step note: AI did not return noise handling details for this bundle.";
+      renderSuggestionButtons(task, explanation);
     }
 
     function toNodeId(action) {
@@ -820,11 +1504,32 @@
       if (repeatMinLengthInput) {
         repeatMinLengthInput.disabled = actionInProgress || refreshInProgress;
       }
+      if (copyBundleJsonBtn) {
+        copyBundleJsonBtn.disabled = actionInProgress || refreshInProgress || !selectedBundleAutomationJson;
+      }
+      const hasSelectedTask = !!getSelectedRepeatedTask();
+      if (addHumanPlanStepBtn) {
+        addHumanPlanStepBtn.disabled = actionInProgress || refreshInProgress || !hasSelectedTask;
+      }
+      if (resetHumanPlanBtn) {
+        resetHumanPlanBtn.disabled = actionInProgress || refreshInProgress || !hasSelectedTask;
+      }
+      if (applyLlmPlanBtn) {
+        const explanation = hasSelectedTask ? explanationByPatternHash.get(selectedRepeatedPatternHash) : null;
+        const hasLlmPlan = getLlmPlanSteps(explanation).length > 0;
+        applyLlmPlanBtn.disabled = actionInProgress || refreshInProgress || !hasSelectedTask || !hasLlmPlan;
+      }
 
       const inspectButtons = document.querySelectorAll(".inspect-repeat-btn");
       inspectButtons.forEach((button) => {
         const hasRun = button.dataset.hasRun === "1";
         button.disabled = !hasRun || actionInProgress || refreshInProgress;
+      });
+
+      const aiExplainButtons = document.querySelectorAll(".ai-explain-btn");
+      aiExplainButtons.forEach((button) => {
+        const eligible = button.dataset.eligible === "1";
+        button.disabled = !eligible || actionInProgress || refreshInProgress;
       });
     }
 
@@ -873,15 +1578,24 @@
         selectedRepeatedPatternHash
         && !repeatedTasks.some((task) => task.pattern_hash === selectedRepeatedPatternHash)
       ) {
+        addExplainDebug(
+          "Selected repeated bundle is no longer present after refresh",
+          { pattern_hash: selectedRepeatedPatternHash }
+        );
+        selectedSuggestionByPatternHash.delete(selectedRepeatedPatternHash);
+        humanPlanByPatternHash.delete(selectedRepeatedPatternHash);
         selectedRepeatedPatternHash = null;
       }
 
+      const aiProviderLabel = automationProvider?.enabled
+        ? `${automationProvider.provider}:${automationProvider.model}`
+        : "LLM disabled";
       repeatedMeta.textContent = repeatedTasks.length
-        ? `${repeatedTasks.length} repeated bundles detected (sequence length >= ${repeatedMinLength} actions)`
-        : `No repeated task bundles yet (sequence length >= ${repeatedMinLength} actions)`;
+        ? `${repeatedTasks.length} repeated bundles detected (sequence length >= ${repeatedMinLength} actions) | AI explanation (${aiProviderLabel})`
+        : `No repeated task bundles yet (sequence length >= ${repeatedMinLength} actions) | AI explanation (${aiProviderLabel})`;
 
       if (!repeatedTasks.length) {
-        repeatedBody.innerHTML = `<tr><td colspan="6">No repeated tasks detected yet for sequence length >= ${repeatedMinLength} actions. Keep collecting and repeat a flow a few times.</td></tr>`;
+        repeatedBody.innerHTML = `<tr><td colspan="7">No repeated tasks detected yet for sequence length >= ${repeatedMinLength} actions. Keep collecting and repeat a flow a few times.</td></tr>`;
         renderRepeatedTaskDetails(null);
         return;
       }
@@ -890,6 +1604,7 @@
         const sequenceLabel = task.sequence_label || formatPatternSequence(task.sequence);
         const hasSampleRun = Array.isArray(task.sample_run) && task.sample_run.length > 0;
         const isSelected = selectedRepeatedPatternHash && task.pattern_hash === selectedRepeatedPatternHash;
+        const aiEligible = true;
         const row = document.createElement("tr");
         row.className = isSelected ? "repeated-row selected" : "repeated-row";
         row.setAttribute("data-pattern-hash", task.pattern_hash);
@@ -920,6 +1635,18 @@
               Inspect Run
             </button>
           </td>
+          <td>
+            <button
+              class="btn-graph ai-explain-btn"
+              type="button"
+              data-pattern-hash="${task.pattern_hash}"
+              data-eligible="${aiEligible ? "1" : "0"}"
+              ${aiEligible ? "" : "disabled"}
+              title="Explain this repeated task in simple words"
+            >
+              Explain
+            </button>
+          </td>
         `;
         repeatedBody.appendChild(row);
       }
@@ -936,7 +1663,17 @@
       }
 
       if (!task) {
+        selectedBundleAutomationJson = "";
+        selectedAutomationStepIndex = -1;
+        if (repeatedStepButtons) {
+          repeatedStepButtons.innerHTML = "";
+        }
+        explanationByPatternHash.delete("active");
         repeatedDetails.textContent = "Bundle details: click a bundle sequence to see full steps and summary.";
+        renderExplainPanel(null, null);
+        renderHumanPlan(null);
+        renderLlmPlan(null, null);
+        syncControlButtons();
         return;
       }
 
@@ -945,8 +1682,44 @@
         ? sequence.join(" -> ")
         : (task.sequence_label || formatPatternSequence(task.sequence));
       const sampleRunLength = Array.isArray(task.sample_run) ? task.sample_run.length : 0;
+      const automationSteps = Array.isArray(task.automation_steps) ? task.automation_steps : [];
+      const automationStepsJson = JSON.stringify(automationSteps, null, 2);
+      selectedBundleAutomationJson = automationStepsJson;
+
+      if (!automationSteps.length) {
+        selectedAutomationStepIndex = -1;
+      } else if (selectedAutomationStepIndex < 0 || selectedAutomationStepIndex >= automationSteps.length) {
+        selectedAutomationStepIndex = 0;
+      }
+
+      const selectedStep = selectedAutomationStepIndex >= 0
+        ? automationSteps[selectedAutomationStepIndex]
+        : null;
+      const selectedStepJson = selectedStep ? JSON.stringify(selectedStep, null, 2) : "No automation step selected.";
+      const explanation = explanationByPatternHash.get(task.pattern_hash);
+      const suggestions = getExplanationSuggestions(explanation);
+      const suggestionLines = suggestions.length
+        ? suggestions.map((value, index) => `  ${index + 1}. ${value}`)
+        : ["  1. No suggestion returned yet.", "  2. Click Explain again.", "  3. Check Explain Debug panel if needed."];
+      const explanationLines = explanation
+        ? [
+          explanation.note || "-",
+          `Intent: ${explanation.intent || "-"}`,
+          `Model: ${explanation.provider || "unknown"}:${explanation.model || "unknown"}`,
+          `Mixed-step note: ${explanation.noise_explanation || "AI did not return mixed-step analysis."}`,
+          "Suggestion options:",
+          ...suggestionLines,
+        ]
+        : [
+          "Click Explain to generate a plain-language summary for this bundle.",
+        ];
+
       repeatedDetails.textContent = [
         "Bundle details",
+        "",
+        "AI Explanation:",
+        ...explanationLines,
+        "",
         `Sequence (${sequence.length || 0} actions): ${fullSequence}`,
         `Occurrences: ${textOrDash(task.frequency)}`,
         `Confidence: ${Math.round((task.confidence || 0) * 100)}%`,
@@ -954,7 +1727,72 @@
         `First Seen: ${toLocalTime(task.first_seen_ms)}`,
         `Last Seen: ${toLocalTime(task.last_seen_ms)}`,
         `Sample Run Steps: ${sampleRunLength}`,
+        `Automation Steps: ${automationSteps.length}`,
+        "",
+        selectedStep
+          ? `Selected Step ${selectedAutomationStepIndex + 1}/${automationSteps.length}: ${selectedStep.step_id || `s${selectedAutomationStepIndex + 1}`} (${selectedStep.action || "UNKNOWN"})`
+          : "No automation step selected.",
+        "",
+        "Selected Step Details:",
+        selectedStepJson,
+        "",
+        "Automation Step JSON:",
+        automationStepsJson,
       ].join("\n");
+
+      renderExplainPanel(task, explanation || null);
+      renderHumanPlan(task);
+      renderLlmPlan(task, explanation || null);
+      renderAutomationStepButtons(automationSteps);
+      syncControlButtons();
+    }
+
+    function renderAutomationStepButtons(steps) {
+      if (!repeatedStepButtons) {
+        return;
+      }
+      repeatedStepButtons.innerHTML = "";
+
+      if (!steps || !steps.length) {
+        return;
+      }
+
+      for (let index = 0; index < steps.length; index += 1) {
+        const step = steps[index];
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = index === selectedAutomationStepIndex
+          ? "automation-step-btn active"
+          : "automation-step-btn";
+        button.setAttribute("data-step-index", String(index));
+        const stepId = step?.step_id || `s${index + 1}`;
+        const action = step?.action || "UNKNOWN";
+        button.textContent = `${stepId}: ${action}`;
+        repeatedStepButtons.appendChild(button);
+      }
+    }
+
+    async function copyTextToClipboard(text) {
+      if (!text) {
+        return false;
+      }
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.top = "-9999px";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const copied = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      return copied;
     }
 
     function renderActions(actions) {
@@ -1647,6 +2485,24 @@
       renderSessions(status);
     }
 
+    async function refreshAutomationProvider() {
+      try {
+        const provider = await callApi("/api/automation/provider");
+        if (provider) {
+          automationProvider = provider;
+        }
+      } catch (err) {
+        automationProvider = {
+          provider: "disabled",
+          model: "disabled",
+          timeout_seconds: 30,
+          enabled: false,
+          disabled_reason: err.message,
+          min_steps_threshold: 15,
+        };
+      }
+    }
+
     async function refreshActions() {
       const actions = await callApi("/api/dashboard/actions?limit=120");
       renderActions(actions);
@@ -1817,6 +2673,7 @@
       syncControlButtons();
       try {
         await Promise.all([
+          refreshAutomationProvider(),
           refreshStatus(),
           refreshActions(),
           refreshGraph(),
@@ -1843,6 +2700,7 @@
         renderStatus(data);
         renderSessions(data);
         await Promise.all([
+          refreshAutomationProvider(),
           refreshActions(),
           refreshGraph(),
           refreshRepeatedTasks(),
@@ -1859,6 +2717,67 @@
         setMessage(`Action applied at ${new Date().toLocaleTimeString()}`);
       } catch (err) {
         setMessage(err.message, true);
+      } finally {
+        actionInProgress = false;
+        syncControlButtons();
+      }
+    }
+
+    function getEligibleAiTask(patternHash) {
+      const task = repeatedTasks.find((item) => item.pattern_hash === patternHash);
+      if (!task) {
+        throw new Error("Target repeated task no longer exists. Refresh and try again.");
+      }
+      return task;
+    }
+
+    async function runAiExplain(patternHash) {
+      if (actionInProgress) {
+        return;
+      }
+
+      actionInProgress = true;
+      syncControlButtons();
+      try {
+        const task = getEligibleAiTask(patternHash);
+        selectedRepeatedPatternHash = task.pattern_hash;
+        const requestPayload = {
+          pattern_hash: patternHash,
+          min_repeats: repeatedMinLength,
+          flow_limit: 5000,
+        };
+        addExplainDebug("Explain clicked", {
+          pattern_hash: patternHash,
+          selected: selectedRepeatedPatternHash,
+          sequence_label: task.sequence_label,
+          step_count: Array.isArray(task.automation_steps) ? task.automation_steps.length : 0,
+        });
+        addExplainDebug("Calling /api/automation/suggest", requestPayload);
+        setMessage("Generating AI explanation...");
+        const suggestion = await callApi("/api/automation/suggest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestPayload),
+        });
+        addExplainDebug("Explain response received", suggestion);
+
+        explanationByPatternHash.set(patternHash, {
+          ...suggestion,
+          suggestions: Array.isArray(suggestion?.suggestions) ? suggestion.suggestions : [],
+          noise_explanation: suggestion?.noise_explanation || "",
+          llm_plan_steps: Array.isArray(suggestion?.llm_plan_steps) ? suggestion.llm_plan_steps : [],
+          _created_at_ms: Date.now(),
+        });
+        selectedSuggestionByPatternHash.set(patternHash, 0);
+        renderRepeatedTasks(repeatedTasks);
+        addExplainDebug("Explanation rendered in dashboard", { pattern_hash: patternHash });
+        setMessage("Explanation updated under bundle details.");
+      } catch (err) {
+        addExplainDebug("Explain failed", {
+          pattern_hash: patternHash,
+          error: err?.message || String(err),
+        }, true);
+        setMessage(`Explain error: ${err.message}`, true);
       } finally {
         actionInProgress = false;
         syncControlButtons();
@@ -2039,7 +2958,21 @@
           return;
         }
         selectedRepeatedPatternHash = patternHash;
+        selectedAutomationStepIndex = 0;
         renderRepeatedTasks(repeatedTasks);
+        return;
+      }
+      const explainButton = target.closest(".ai-explain-btn");
+      if (explainButton) {
+        const patternHash = explainButton.getAttribute("data-pattern-hash");
+        if (!patternHash) {
+          return;
+        }
+        try {
+          await runAiExplain(patternHash);
+        } catch (err) {
+          setMessage(err.message, true);
+        }
         return;
       }
       const button = target.closest(".inspect-repeat-btn");
@@ -2056,6 +2989,155 @@
         setMessage(err.message, true);
       }
     });
+    if (repeatedStepButtons) {
+      repeatedStepButtons.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+        const button = target.closest(".automation-step-btn");
+        if (!button) {
+          return;
+        }
+        const stepIndex = Number.parseInt(button.getAttribute("data-step-index") || "", 10);
+        if (!Number.isFinite(stepIndex)) {
+          return;
+        }
+        selectedAutomationStepIndex = stepIndex;
+        const selectedTask = selectedRepeatedPatternHash
+          ? repeatedTasks.find((task) => task.pattern_hash === selectedRepeatedPatternHash)
+          : null;
+        renderRepeatedTaskDetails(selectedTask || null);
+      });
+    }
+    if (explainSuggestionButtons) {
+      explainSuggestionButtons.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+        const button = target.closest(".explain-suggestion-btn");
+        if (!button) {
+          return;
+        }
+        const suggestionIndex = Number.parseInt(button.getAttribute("data-suggestion-index") || "", 10);
+        if (!Number.isFinite(suggestionIndex) || suggestionIndex < 0) {
+          return;
+        }
+        if (!selectedRepeatedPatternHash) {
+          return;
+        }
+
+        selectedSuggestionByPatternHash.set(selectedRepeatedPatternHash, suggestionIndex);
+        const selectedTask = repeatedTasks.find((task) => task.pattern_hash === selectedRepeatedPatternHash) || null;
+        renderExplainPanel(selectedTask, selectedTask ? explanationByPatternHash.get(selectedRepeatedPatternHash) : null);
+        const explanation = explanationByPatternHash.get(selectedRepeatedPatternHash);
+        const suggestions = getExplanationSuggestions(explanation);
+        if (suggestions[suggestionIndex]) {
+          setMessage(`Selected suggestion ${suggestionIndex + 1}: ${suggestions[suggestionIndex]}`);
+        }
+      });
+    }
+    if (humanPlanList) {
+      humanPlanList.addEventListener("input", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLTextAreaElement)) {
+          return;
+        }
+        const index = Number.parseInt(target.getAttribute("data-plan-index") || "", 10);
+        if (!Number.isFinite(index) || index < 0 || !selectedRepeatedPatternHash) {
+          return;
+        }
+
+        const task = getSelectedRepeatedTask();
+        if (!task) {
+          return;
+        }
+
+        const plan = ensureHumanPlan(task).slice();
+        if (index >= plan.length) {
+          return;
+        }
+        plan[index] = normalizePlanDraftText(target.value, `Step ${index + 1}: describe this action.`);
+        humanPlanByPatternHash.set(task.pattern_hash, plan);
+      });
+
+      humanPlanList.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+        const removeBtn = target.closest(".human-plan-remove-btn");
+        if (!removeBtn || !selectedRepeatedPatternHash) {
+          return;
+        }
+
+        const index = Number.parseInt(removeBtn.getAttribute("data-plan-remove-index") || "", 10);
+        if (!Number.isFinite(index) || index < 0) {
+          return;
+        }
+
+        const task = getSelectedRepeatedTask();
+        if (!task) {
+          return;
+        }
+
+        const plan = ensureHumanPlan(task).slice();
+        if (plan.length <= 1 || index >= plan.length) {
+          return;
+        }
+
+        plan.splice(index, 1);
+        humanPlanByPatternHash.set(task.pattern_hash, plan);
+        renderHumanPlan(task);
+        setMessage(`Removed step ${index + 1} from editable automation plan.`);
+      });
+    }
+    if (addHumanPlanStepBtn) {
+      addHumanPlanStepBtn.addEventListener("click", () => {
+        const task = getSelectedRepeatedTask();
+        if (!task) {
+          setMessage("Select a repeated bundle first.", true);
+          return;
+        }
+        const plan = ensureHumanPlan(task).slice();
+        plan.push(`Step ${plan.length + 1}: add your custom action here.`);
+        humanPlanByPatternHash.set(task.pattern_hash, plan);
+        renderHumanPlan(task);
+        setMessage("Custom step added to automation plan.");
+      });
+    }
+    if (resetHumanPlanBtn) {
+      resetHumanPlanBtn.addEventListener("click", () => {
+        const task = getSelectedRepeatedTask();
+        if (!task) {
+          setMessage("Select a repeated bundle first.", true);
+          return;
+        }
+        humanPlanByPatternHash.set(task.pattern_hash, buildDefaultHumanPlan(task));
+        renderHumanPlan(task);
+        setMessage("Automation plan reset from captured repeated steps.");
+      });
+    }
+    if (applyLlmPlanBtn) {
+      applyLlmPlanBtn.addEventListener("click", () => {
+        const task = getSelectedRepeatedTask();
+        if (!task) {
+          setMessage("Select a repeated bundle first.", true);
+          return;
+        }
+        const explanation = explanationByPatternHash.get(task.pattern_hash);
+        const llmSteps = getLlmPlanSteps(explanation);
+        if (!llmSteps.length) {
+          setMessage("No LLM plan available yet. Click Explain first.", true);
+          return;
+        }
+
+        humanPlanByPatternHash.set(task.pattern_hash, llmSteps.slice());
+        renderHumanPlan(task);
+        setMessage("LLM plan copied into editable automation plan.");
+      });
+    }
     applyRepeatLengthBtn.addEventListener("click", async () => {
       try {
         await applyRepeatMinLengthSetting();
@@ -2074,6 +3156,27 @@
         setMessage(err.message, true);
       }
     });
+    copyBundleJsonBtn.addEventListener("click", async () => {
+      try {
+        if (!selectedBundleAutomationJson) {
+          setMessage("Select a bundle sequence first to copy its JSON.", true);
+          return;
+        }
+        const copied = await copyTextToClipboard(selectedBundleAutomationJson);
+        if (!copied) {
+          throw new Error("Copy was blocked by the browser.");
+        }
+        setMessage("Automation JSON copied to clipboard.");
+      } catch (err) {
+        setMessage(`Copy failed: ${err.message}`, true);
+      }
+    });
+    if (toggleExplainDebugBtn) {
+      toggleExplainDebugBtn.addEventListener("click", () => {
+        explainDebugEnabled = !explainDebugEnabled;
+        renderExplainDebugPanel();
+      });
+    }
     clearBtn.addEventListener("click", async () => {
       const confirmed = window.confirm(
         "Clear all collected actions, graph data, and dashboard session history?"
@@ -2111,6 +3214,10 @@
     setGraphMode("2d");
     updateGraphCursor();
     syncFullscreenButton();
+    renderExplainPanel(null, null);
+    renderHumanPlan(null);
+    renderLlmPlan(null, null);
+    renderExplainDebugPanel();
 
     refreshAll();
     setInterval(() => {

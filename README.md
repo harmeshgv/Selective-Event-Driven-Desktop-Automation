@@ -135,6 +135,25 @@ Environment variables:
 - `SEDA_MAX_PATTERN_LENGTH` (default `10`)
 - `SEDA_ACTION_GROUPING_WINDOW_MS` (default `5000`)
 - `SEDA_DEBUG` (set to any value to enable debug mode)
+- `SEDA_LLM_PROVIDER` (`disabled`, `groq`, or `ollama`; default `disabled`)
+- `SEDA_LLM_MODEL` (provider model; defaults: Groq=`llama-3.1-8b-instant`, Ollama=`llama3.1:8b`)
+- `SEDA_LLM_BASE_URL` (optional endpoint override)
+- `SEDA_LLM_TIMEOUT_SECONDS` (default `30`)
+- `SEDA_AUTOMATION_MIN_STEPS` (minimum repeated-task step count for AI assist; default `15`)
+- `SEDA_GROQ_API_KEY` (required when `SEDA_LLM_PROVIDER=groq`; `GROQ_API_KEY` also supported)
+
+### `.env` support
+
+SEDA now loads `.env` automatically from:
+
+1. Current working directory
+2. Parent directory
+
+Use `.env.example` as a template:
+
+```powershell
+Copy-Item .env.example .env
+```
 
 ## Development
 

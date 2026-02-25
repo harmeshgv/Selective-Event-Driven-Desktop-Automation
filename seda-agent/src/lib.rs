@@ -21,6 +21,7 @@
 pub mod config;
 pub mod control;
 pub mod graph;
+pub mod llm;
 pub mod mcp;
 pub mod mining;
 pub mod observer;

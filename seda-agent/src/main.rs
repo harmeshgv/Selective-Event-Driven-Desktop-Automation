@@ -191,7 +191,7 @@ async fn main() -> Result<()> {
 
     // Start MCP server
     tracing::info!("Starting MCP server on port {}...", config.mcp_port);
-    let mcp_server = McpServer::new(config.mcp_port, mcp_repository, mcp_window_manager)
+    let mcp_server = McpServer::new(config.clone(), mcp_repository, mcp_window_manager)
         .with_collector(Arc::clone(&collector));
 
     // Run MCP server in background

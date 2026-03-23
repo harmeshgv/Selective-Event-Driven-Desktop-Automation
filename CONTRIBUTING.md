@@ -5,13 +5,16 @@ Thanks for contributing to SEDA.
 ## Requirements
 
 - Windows 10/11.
-- Rust stable toolchain (MSVC).
+- Python 3.10+.
 
 ## Setup
 
 ```powershell
-cd .\seda-agent
-cargo build
+cd .\seda-agent-py
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -U pip
+pip install -e .
 ```
 
 ## Local Development Workflow
@@ -21,10 +24,9 @@ cargo build
 3. Run checks:
 
 ```powershell
-cd .\seda-agent
-cargo fmt
-cargo check
-cargo test
+cd .\seda-agent-py
+.\.venv\Scripts\python -m pip install -e .
+.\.venv\Scripts\python -m compileall .\src
 ```
 
 4. Update docs when behavior or APIs change.

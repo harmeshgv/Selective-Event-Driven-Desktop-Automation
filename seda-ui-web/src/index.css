@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: 255 255 255;
+    --fg: 10 10 10;
+    --muted: 115 115 115;
+    --card: 255 255 255;
+    --border: 229 229 229;
+    --accent: 0 0 0;
+    color-scheme: light;
+  }
+  .dark {
+    --bg: 10 10 10;
+    --fg: 245 245 245;
+    --muted: 163 163 163;
+    --card: 16 16 16;
+    --border: 38 38 38;
+    --accent: 255 255 255;
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-[rgb(var(--bg))] text-[rgb(var(--fg))] antialiased;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial,
+      "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-[rgb(var(--border))] bg-[rgb(var(--card))] shadow-sm;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-[rgb(var(--border))] px-3 py-2 text-sm font-medium transition;
+  }
+  .btn:hover {
+    @apply bg-black/5 dark:bg-white/10;
+  }
+  .btn-primary {
+    @apply border-transparent bg-[rgb(var(--fg))] text-[rgb(var(--bg))];
+  }
+  .btn-primary:hover {
+    @apply bg-[rgb(var(--fg))]/90;
+  }
+  .btn-danger {
+    @apply border-red-600/40 text-red-600 dark:border-red-400/30 dark:text-red-400;
+  }
+  .btn-danger:hover {
+    @apply bg-red-500/10;
+  }
+  .input {
+    @apply w-full rounded-lg border border-[rgb(var(--border))] bg-transparent px-3 py-2 text-sm outline-none transition;
+  }
+  .input:focus {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+    border-color: rgba(59, 130, 246, 0.6);
+  }
+  .subtle {
+    @apply text-sm text-[rgb(var(--muted))];
+  }
+}

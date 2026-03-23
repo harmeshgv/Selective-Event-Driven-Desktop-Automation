@@ -22,6 +22,33 @@ Thumbs.db
 # Environment files
 .env
 .env.local
+.venv/
+**/.venv/
+venv/
+**/venv/
+
+# Python artifacts
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+**/*.egg-info/
+
+# Node artifacts
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+
+# Build artifacts
+build/
+**/build/
+bin/
+**/bin/
+obj/
+**/obj/
 
 # Logs
 *.log

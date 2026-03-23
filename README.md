@@ -16,7 +16,7 @@ SEDA captures high-level OS events, transforms them into symbolic actions, store
 
 ## Current Behavior
 
-- Running `cargo run` starts the backend and dashboard server.
+- Running the Python server starts the backend and dashboard server.
 - Data collection is idle by default.
 - Collection starts only when `Start Session` is clicked in the dashboard.
 - Stopping collection records a completed session summary.
@@ -24,7 +24,8 @@ SEDA captures high-level OS events, transforms them into symbolic actions, store
 
 ## Repository Layout
 
-- `seda-agent/` Rust application.
+- `seda-agent-py/` Python application (default).
+- `seda-agent/` Rust application (legacy/reference).
 - `seda-agent/src/observer/` Windows event capture.
 - `seda-agent/src/symbolizer/` Raw event to symbolic action transformation.
 - `seda-agent/src/storage/` SQLite repository and schema types.
@@ -34,15 +35,18 @@ SEDA captures high-level OS events, transforms them into symbolic actions, store
 ## Requirements
 
 - Windows 10/11.
-- Rust stable (MSVC toolchain).
+- Python 3.10+.
 - Local browser for dashboard (`http://127.0.0.1:9315/dashboard` by default).
 
 ## Quick Start
 
 ```powershell
-cd .\seda-agent
-cargo build
-cargo run
+cd .\seda-agent-py
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -U pip
+pip install -e .
+seda-agent
 ```
 
 Default endpoints:
@@ -50,6 +54,32 @@ Default endpoints:
 - Health: `http://127.0.0.1:9315/health`
 - JSON-RPC: `http://127.0.0.1:9315/rpc`
 - Dashboard: `http://127.0.0.1:9315/dashboard`
+
+## Modern UI (React, recommended)
+
+This repo also includes a **modern React UI** (clean black/white design + dark/light mode) in `seda-ui-web/`.
+
+In one terminal, run the backend:
+
+```powershell
+cd .\seda-agent-py
+.\.venv\Scripts\Activate.ps1
+seda-agent
+```
+
+In another terminal, run the React UI:
+
+```powershell
+cd .\seda-ui-web
+npm install
+npm run dev
+```
+
+Then open the printed Vite URL (usually `http://127.0.0.1:5173`).
+
+Notes:
+- The React dev server proxies `/api/*` and `/health` to the backend at `http://127.0.0.1:9315` (see `seda-ui-web/vite.config.ts`).
+- The backend enables CORS for local dev origins (`localhost`/`127.0.0.1`) so the UI can call it directly if needed.
 
 ## Dashboard Guide
 
@@ -158,10 +188,12 @@ Copy-Item .env.example .env
 ## Development
 
 ```powershell
-cd .\seda-agent
-cargo fmt
-cargo check
-cargo test
+cd .\seda-agent-py
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -U pip
+pip install -e .
+python -m compileall .\src
 ```
 
 ## Known Limitations

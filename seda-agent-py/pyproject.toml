@@ -1,0 +1,28 @@
+[project]
+name = "seda-agent"
+version = "0.1.0"
+description = "Privacy-first local agent for selective event-driven desktop automation (Python port)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "groq",
+  "uvicorn[standard]>=0.27",
+  "python-dotenv>=1.0",
+  "pydantic>=2.6",
+  "psutil>=5.9",
+  "pywin32>=306",
+  "PySide6>=6.7",
+]
+
+[project.scripts]
+seda-agent = "seda_agent.main:main"
+seda-dashboard = "seda_agent.app_launcher:main"
+seda-qt = "seda_agent.qt_main_window:main"
+
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/seda_agent"]

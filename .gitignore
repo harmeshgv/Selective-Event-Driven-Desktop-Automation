@@ -1,0 +1,36 @@
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Node and frontend builds
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Python caches and virtualenvs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Local databases and runtime output
+*.db
+*.sqlite
+*.sqlite3
+*.log
+app/**/screenshots/
+app/**/data/
+

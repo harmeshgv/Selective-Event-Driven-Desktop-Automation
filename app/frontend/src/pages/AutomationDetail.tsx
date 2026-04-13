@@ -203,7 +203,7 @@ export default function AutomationDetail() {
             <p>This automation has no steps yet.</p>
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 10 }}>
+          <div className="task-list">
             {editedSteps.map((s, idx) => (
               <div
                 key={s.step_id}

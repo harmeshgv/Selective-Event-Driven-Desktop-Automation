@@ -228,7 +228,7 @@ export default function Dashboard() {
 
         {discovering && (
           <span className="discover-badge">
-            <span className="discover-dot" /> Scanning patterns...
+            <div className="discover-dot"></div> Scanning patterns...
           </span>
         )}
 
@@ -263,7 +263,7 @@ export default function Dashboard() {
             <p>Perform some actions and check back in a moment. FlowPilot will detect patterns automatically.</p>
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 12 }}>
+          <div className="task-list">
             {repeatedTasks.slice(0, 12).map((t, idx) => (
               <div
                 key={t.task_id}
@@ -345,19 +345,18 @@ export default function Dashboard() {
             <p>Click "Automate" on a repeated task above to generate your first workflow automation.</p>
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 10 }}>
+          <div className="task-list">
             {automations.slice(0, 10).map((a, idx) => (
               <Link
                 key={a.automation_id}
                 to={`/automation/${a.automation_id}`}
-                className="card-flat"
+                className="task-card"
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
                   textDecoration: "none",
                   color: "var(--text)",
-                  animation: "card-enter 0.35s ease backwards",
                   animationDelay: `${idx * 50}ms`,
                 }}
               >

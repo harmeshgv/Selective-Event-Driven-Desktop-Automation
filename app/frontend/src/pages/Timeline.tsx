@@ -62,15 +62,12 @@ const TimelineRow = React.memo(function TimelineRow({ log, idx }: { log: LogOut;
   const color = actionColor(log.action);
   return (
     <div className="timeline-event" style={{ animationDelay: `${Math.min(idx, 40) * 25}ms` }}>
-      <div className="timeline-dot" style={{ background: color }} />
       <div className="timeline-time">{formatTime(log.timestamp)}</div>
       <div className="timeline-body">
-        <span style={{ color: "var(--text)", fontWeight: 500 }}>{log.action}</span>
-        <span style={{ margin: "0 6px", opacity: 0.3 }}>·</span>
+        <span className="timeline-action">{log.action}</span>
         <span>{log.app}</span>
         {log.text && (
           <>
-            <span style={{ margin: "0 6px", opacity: 0.3 }}>·</span>
             <span style={{ color: "var(--text-tertiary)" }}>{log.text}</span>
           </>
         )}
@@ -186,12 +183,10 @@ export default function Timeline() {
         </div>
       ) : (
         <div
+          className="task-list"
           style={{
-            display: "grid",
-            gap: 6,
             maxHeight: "calc(100vh - 260px)",
             overflowY: "auto",
-            paddingRight: 4,
           }}
         >
           {orderedForDisplay.map((l, i) => (

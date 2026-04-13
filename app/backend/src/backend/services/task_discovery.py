@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
+from threading import Lock
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from typing import Iterable, List, Sequence
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.db.models import ObservedLog, TaskPattern, TaskStep
@@ -72,6 +75,21 @@ class TaskGroupResult:
     last_used: str
     steps: List[str]
     confidence_score: float
+
+
+@dataclass(frozen=True)
+class TaskDiscoveryCacheEntry:
+    log_count: int
+    max_log_id: int
+    limit_logs: int
+    min_steps: int
+    max_steps: int
+    created_at: datetime
+    results: tuple[TaskGroupResult, ...]
+
+
+_TASK_DISCOVERY_CACHE: TaskDiscoveryCacheEntry | None = None
+_TASK_DISCOVERY_CACHE_LOCK = Lock()
 
 
 def _coerce_event(raw: Event | ObservedLog) -> Event:
@@ -643,6 +661,93 @@ def _infer_task_name(steps: list[str]) -> str:
     return f"{labels[0]} -> {labels[1]}"
 
 
+def _load_recent_events(db: Session, *, limit_logs: int) -> list[Event]:
+    rows = (
+        db.query(
+            ObservedLog.timestamp,
+            ObservedLog.app,
+            ObservedLog.action,
+            ObservedLog.coordinates,
+            ObservedLog.text,
+            ObservedLog.screenshot_path,
+        )
+        .order_by(ObservedLog.timestamp.desc())
+        .limit(limit_logs)
+        .all()
+    )
+    return [
+        Event(
+            timestamp=row.timestamp,
+            app=row.app,
+            action=row.action,
+            coordinates=row.coordinates,
+            text=row.text,
+            screenshot_path=row.screenshot_path,
+        )
+        for row in reversed(rows)
+    ]
+
+
+def _get_log_watermark(db: Session) -> tuple[int, int]:
+    log_count, max_log_id = db.query(func.count(ObservedLog.id), func.max(ObservedLog.id)).one()
+    return int(log_count or 0), int(max_log_id or 0)
+
+
+def _get_cached_results(
+    *,
+    log_count: int,
+    max_log_id: int,
+    limit_logs: int,
+    min_steps: int,
+    max_steps: int,
+    max_cache_age_seconds: int,
+) -> list[TaskGroupResult] | None:
+    with _TASK_DISCOVERY_CACHE_LOCK:
+        cached = _TASK_DISCOVERY_CACHE
+        if cached is None:
+            return None
+        # Fast path: serve recent cache for responsiveness even if new logs arrived.
+        # This keeps the dashboard snappy while logs stream continuously.
+        if (
+            cached.limit_logs == limit_logs
+            and cached.min_steps == min_steps
+            and cached.max_steps == max_steps
+            and (datetime.now(timezone.utc) - cached.created_at) <= timedelta(seconds=max_cache_age_seconds)
+        ):
+            return list(cached.results)
+        if (
+            cached.log_count != log_count
+            or cached.max_log_id != max_log_id
+            or cached.limit_logs != limit_logs
+            or cached.min_steps != min_steps
+            or cached.max_steps != max_steps
+        ):
+            return None
+        return list(cached.results)
+
+
+def _set_cached_results(
+    *,
+    log_count: int,
+    max_log_id: int,
+    limit_logs: int,
+    min_steps: int,
+    max_steps: int,
+    results: list[TaskGroupResult],
+) -> None:
+    global _TASK_DISCOVERY_CACHE
+    with _TASK_DISCOVERY_CACHE_LOCK:
+        _TASK_DISCOVERY_CACHE = TaskDiscoveryCacheEntry(
+            log_count=log_count,
+            max_log_id=max_log_id,
+            limit_logs=limit_logs,
+            min_steps=min_steps,
+            max_steps=max_steps,
+            created_at=datetime.now(timezone.utc),
+            results=tuple(results),
+        )
+
+
 def discover_and_persist_tasks(
     *,
     db: Session,
@@ -652,22 +757,58 @@ def discover_and_persist_tasks(
     max_steps: int = 12,
 ) -> List[TaskGroupResult]:
     del segment_gap_seconds  # No longer needed after sequence-based detection.
+    # Tune for UI responsiveness with constantly incoming events.
+    max_cache_age_seconds = 12
 
-    rows: List[ObservedLog] = (
-        db.query(ObservedLog)
-        .order_by(ObservedLog.timestamp.asc())
-        .limit(limit_logs)
-        .all()
+    log_count, max_log_id = _get_log_watermark(db)
+    if log_count == 0:
+        _set_cached_results(
+            log_count=0,
+            max_log_id=0,
+            limit_logs=limit_logs,
+            min_steps=min_steps,
+            max_steps=max_steps,
+            results=[],
+        )
+        return []
+
+    cached = _get_cached_results(
+        log_count=log_count,
+        max_log_id=max_log_id,
+        limit_logs=limit_logs,
+        min_steps=min_steps,
+        max_steps=max_steps,
+        max_cache_age_seconds=max_cache_age_seconds,
     )
-    if not rows:
+    if cached is not None:
+        return cached
+
+    events = _load_recent_events(db, limit_logs=limit_logs)
+    if not events:
+        _set_cached_results(
+            log_count=log_count,
+            max_log_id=max_log_id,
+            limit_logs=limit_logs,
+            min_steps=min_steps,
+            max_steps=max_steps,
+            results=[],
+        )
         return []
 
     patterns = detect_repeated_sequences(
-        [_coerce_event(row) for row in rows],
+        events,
         min_pattern_steps=min_steps,
         max_pattern_steps=max_steps,
     )
     if not patterns:
+        _set_cached_results(
+            log_count=log_count,
+            max_log_id=max_log_id,
+            limit_logs=limit_logs,
+            min_steps=min_steps,
+            max_steps=max_steps,
+            results=[],
+        )
         return []
 
     results: list[TaskGroupResult] = []
@@ -707,6 +848,47 @@ def discover_and_persist_tasks(
                 confidence_score=pattern.confidence,
             )
         )
-
-    db.commit()
+        # Commit per pattern so log ingestion and other readers are not blocked for the whole loop.
+        db.commit()
+    _set_cached_results(
+        log_count=log_count,
+        max_log_id=max_log_id,
+        limit_logs=limit_logs,
+        min_steps=min_steps,
+        max_steps=max_steps,
+        results=results,
+    )
     return results
+
+
+def _snapshot_confidence_from_frequency(frequency: int) -> float:
+    """Approximate confidence when serving DB snapshot (live discovery stores real scores)."""
+    return float(min(1.0, 0.18 + math.log1p(max(0, frequency)) * 0.14))
+
+
+def load_persisted_tasks_snapshot(db: Session) -> list[TaskGroupResult]:
+    """Fast path: read task_patterns + task_steps only (no log scan / pattern detection)."""
+    task_rows = db.query(TaskPattern).order_by(TaskPattern.frequency.desc()).all()
+    out: list[TaskGroupResult] = []
+    for tp in task_rows:
+        step_rows = (
+            db.query(TaskStep)
+            .filter(TaskStep.task_id == tp.id)
+            .order_by(TaskStep.step_order.asc())
+            .all()
+        )
+        step_strs = [r.step for r in step_rows]
+        lu = tp.last_used
+        last_used = lu.astimezone(timezone.utc).isoformat() if lu.tzinfo else lu.replace(tzinfo=timezone.utc).isoformat()
+        out.append(
+            TaskGroupResult(
+                task_id=tp.id,
+                signature=tp.signature,
+                name=(tp.name or "").strip(),
+                frequency=tp.frequency,
+                last_used=last_used,
+                steps=step_strs,
+                confidence_score=_snapshot_confidence_from_frequency(tp.frequency),
+            )
+        )
+    return out

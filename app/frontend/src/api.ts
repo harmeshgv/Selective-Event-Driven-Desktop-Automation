@@ -8,6 +8,26 @@ export type TaskOut = {
   confidence_score: number;
 };
 
+export type ExplainTaskIn = {
+  task_id?: number;
+  task_name?: string;
+  signature?: string;
+  actions: string[];
+  repeat_count: number;
+  last_used?: string;
+  confidence_score?: number;
+};
+
+export type ExplainTaskOut = {
+  explanation: string;
+  provider: string;
+  cached: boolean;
+  used_fallback: boolean;
+  is_repeated: boolean;
+  repeated_confidence: number;
+  repeated_reason: string;
+};
+
 export type AutomationStepOut = {
   step_id: number;
   step_order: number;
@@ -81,7 +101,7 @@ export type ObserverResetOut = {
 };
 
 async function getJSON<T>(path: string): Promise<T> {
-  const resp = await fetch(path, { method: "GET" });
+  const resp = await fetch(path, { method: "GET", cache: "no-store" });
   if (!resp.ok) {
     const text = await resp.text();
     throw new Error(`GET ${path} failed: ${resp.status} ${text}`);
@@ -128,16 +148,63 @@ async function deleteJSON<TReq, TResp>(path: string, body: TReq): Promise<TResp>
   return (await resp.json()) as TResp;
 }
 
-export function getTasks(): Promise<TaskOut[]> {
-  return getJSON<TaskOut[]>("/tasks");
+export type GetTasksOptions = {
+  limitLogs?: number;
+  /** When true, runs full pattern discovery over logs (slower). When false, reads persisted tasks from DB (fast). */
+  discover?: boolean;
+};
+
+export function getTasks(options: GetTasksOptions = {}): Promise<TaskOut[]> {
+  const params = new URLSearchParams();
+  if (options.limitLogs != null) {
+    params.set("limit_logs", String(options.limitLogs));
+  }
+  if (options.discover === true) {
+    params.set("discover", "true");
+  } else if (options.discover === false) {
+    params.set("discover", "false");
+  }
+  const suffix = params.size > 0 ? `?${params.toString()}` : "";
+  return getJSON<TaskOut[]>(`/tasks${suffix}`);
 }
 
-export function getAutomations(): Promise<AutomationPlanOut[]> {
-  return getJSON<AutomationPlanOut[]>("/automations");
+export function explainTask(input: ExplainTaskIn): Promise<ExplainTaskOut> {
+  return postJSON<ExplainTaskIn, ExplainTaskOut>("/tasks/explain", input);
 }
 
-export function getLogs(limit: number = 200): Promise<LogOut[]> {
-  return getJSON<LogOut[]>(`/logs?limit=${encodeURIComponent(String(limit))}`);
+export type GetAutomationsOptions = {
+  taskId?: number;
+  limit?: number;
+};
+
+export function getAutomations(options: GetAutomationsOptions = {}): Promise<AutomationPlanOut[]> {
+  const params = new URLSearchParams();
+  if (options.taskId != null) {
+    params.set("task_id", String(options.taskId));
+  }
+  if (options.limit != null) {
+    params.set("limit", String(options.limit));
+  }
+  const suffix = params.size > 0 ? `?${params.toString()}` : "";
+  return getJSON<AutomationPlanOut[]>(`/automations${suffix}`);
+}
+
+export function getAutomation(automationId: number): Promise<AutomationPlanOut> {
+  return getJSON<AutomationPlanOut>(`/automations/${automationId}`);
+}
+
+export type GetLogsOptions = {
+  limit?: number;
+  sinceId?: number;
+};
+
+export function getLogs(options: GetLogsOptions = {}): Promise<LogOut[]> {
+  const params = new URLSearchParams();
+  params.set("limit", String(options.limit ?? 200));
+  if (options.sinceId != null) {
+    params.set("since_id", String(options.sinceId));
+  }
+  return getJSON<LogOut[]>(`/logs?${params.toString()}`);
 }
 
 export function getObserverSettings(): Promise<ObserverSettingsOut> {

@@ -28,6 +28,8 @@ venv/
 
 # Local databases and runtime output
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 *.log

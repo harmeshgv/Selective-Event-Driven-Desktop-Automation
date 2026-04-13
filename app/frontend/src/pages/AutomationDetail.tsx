@@ -1,13 +1,20 @@
 import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
-  getAutomations,
+  getAutomation,
   type AutomationStepOut,
   runAutomation,
   updateAutomationSteps,
   type AutomationPlanOut,
   type RunAutomationOut,
 } from "../api";
+
+function riskBadgeClass(risk: string) {
+  const r = risk.toLowerCase();
+  if (r === "low") return "badge badge-success";
+  if (r === "high") return "badge badge-danger";
+  return "badge badge-warning";
+}
 
 export default function AutomationDetail() {
   const { automationId } = useParams();
@@ -17,16 +24,37 @@ export default function AutomationDetail() {
   const [editedSteps, setEditedSteps] = useState<AutomationStepOut[]>([]);
   const [preview, setPreview] = useState<RunAutomationOut | null>(null);
   const [approved, setApproved] = useState(false);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
   const [running, setRunning] = useState(false);
 
+  function buildLocalPreview(steps: AutomationStepOut[]): RunAutomationOut {
+    return {
+      automation_id: id,
+      plan_name: automation?.name ?? "Automation",
+      preview: true,
+      risk_level: preview?.risk_level ?? automation?.risk_level ?? "unknown",
+      status: "previewed",
+      error: "",
+      steps: steps.map((s) => ({
+        step_order: s.step_order,
+        description: s.description,
+        status: "would_execute",
+        attempts: 0,
+        error: "",
+      })),
+    };
+  }
+
   useEffect(() => {
+    if (!Number.isFinite(id) || id <= 0) {
+      setError("Invalid automation id");
+      return;
+    }
     (async () => {
       try {
-        const all = await getAutomations();
-        const found = all.find((x) => x.automation_id === id) ?? null;
+        const found = await getAutomation(id);
         setAutomation(found);
-        setEditedSteps(found?.steps ?? []);
+        setEditedSteps(found.steps);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -34,7 +62,7 @@ export default function AutomationDetail() {
   }, [id]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!Number.isFinite(id) || id <= 0) return;
     (async () => {
       try {
         const res = await runAutomation({ automation_id: id, preview: true, approved: false });
@@ -55,7 +83,7 @@ export default function AutomationDetail() {
     setRunning(true);
     setError("");
     try {
-      await updateAutomationSteps(
+      const updated = await updateAutomationSteps(
         id,
         editedSteps.map((s) => ({
           step_id: s.step_id,
@@ -67,14 +95,10 @@ export default function AutomationDetail() {
           retry_count: s.retry_count,
         })),
       );
-      // After edits, require explicit user approval again.
+      setAutomation(updated);
+      setEditedSteps(updated.steps);
       setApproved(false);
       await refreshPreview();
-      // Keep automation state in sync.
-      const all = await getAutomations();
-      const found = all.find((x) => x.automation_id === id) ?? null;
-      setAutomation(found);
-      setEditedSteps(found?.steps ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -82,12 +106,22 @@ export default function AutomationDetail() {
     }
   }
 
+  function onDeleteStep(stepId: number) {
+    setEditedSteps((prev) => {
+      const next = prev.filter((x) => x.step_id !== stepId);
+      const renumbered = next.map((x, idx) => ({ ...x, step_order: idx + 1 }));
+      setPreview(buildLocalPreview(renumbered));
+      return renumbered;
+    });
+    setApproved(false);
+  }
+
   async function onExecute() {
     if (!automation) return;
     setRunning(true);
     setError("");
     try {
-      const res = await runAutomation({ automation_id: id, preview: false, approved: approved });
+      const res = await runAutomation({ automation_id: id, preview: false, approved });
       setPreview(res);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -96,102 +130,131 @@ export default function AutomationDetail() {
     }
   }
 
+  const risk = preview?.risk_level ?? automation?.risk_level ?? "unknown";
+
   return (
-    <div style={{ padding: 16 }}>
-      <h1 style={{ marginTop: 0 }}>Automation</h1>
-
-      {error ? (
-        <pre style={{ color: "crimson", whiteSpace: "pre-wrap" }}>{error}</pre>
-      ) : null}
-
-      <div style={{ marginBottom: 12 }}>
-        <strong>ID:</strong> {id}
-        <br />
-        <strong>Risk:</strong> {preview?.risk_level ?? automation?.risk_level ?? "unknown"}
+    <div>
+      {/* Breadcrumb */}
+      <div style={{ marginBottom: 16 }}>
+        <Link to="/" style={{ fontSize: 13, color: "var(--text-tertiary)" }}>
+          ← Back to Dashboard
+        </Link>
       </div>
 
-      <div style={{ marginBottom: 12 }}>
-        <label>
-          <input
-            type="checkbox"
-            checked={approved}
-            onChange={(e) => setApproved(e.target.checked)}
+      <div className="page-header" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ flex: 1 }}>
+          <h1>{automation?.name ?? `Automation #${id}`}</h1>
+          <p>Review, edit, and execute this automation workflow.</p>
+        </div>
+        <span className={riskBadgeClass(risk)} style={{ fontSize: 13, padding: "5px 14px" }}>
+          {risk} risk
+        </span>
+      </div>
+
+      {error && <div className="error-banner">{error}</div>}
+
+      {/* Approval + Execute */}
+      <div className="card" style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 16 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+          <button
+            className="toggle-switch"
+            data-on={String(approved)}
+            onClick={() => setApproved((v) => !v)}
             disabled={running}
+            type="button"
           />
-          I approve execution
+          <span style={{ fontSize: 14, fontWeight: 500 }}>I approve execution</span>
         </label>
+        <button className="btn-primary" onClick={onExecute} disabled={!approved || running} style={{ marginLeft: "auto" }}>
+          {running ? "Executing..." : "Execute Automation"}
+        </button>
       </div>
 
-      <button onClick={onExecute} disabled={!approved || running}>
-        {running ? "Running..." : "Execute (approval required)"}
-      </button>
+      {/* Preview */}
+      {preview && (
+        <div style={{ marginBottom: 24 }}>
+          <h3 className="section-title">Execution Preview</h3>
+          <div className="card-inset" style={{ fontFamily: "var(--mono)", fontSize: 12, whiteSpace: "pre-wrap", maxHeight: 260, overflow: "auto" }}>
+            {JSON.stringify(preview.steps, null, 2)}
+          </div>
+        </div>
+      )}
 
-      <section style={{ marginTop: 24 }}>
-        <h2>Step-by-step plan</h2>
-        <pre style={{ background: "#f6f6f6", padding: 12, overflow: "auto" }}>
-          {preview ? JSON.stringify(preview.steps, null, 2) : "Loading preview..."}
-        </pre>
-      </section>
+      {/* Edit Steps */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <h3 className="section-title" style={{ margin: 0 }}>
+            Steps ({editedSteps.length})
+          </h3>
+          <button className="btn-primary btn-sm" onClick={onSaveSteps} disabled={running}>
+            Save Changes
+          </button>
+        </div>
 
-      <section style={{ marginTop: 24 }}>
-        <h2>Edit Steps</h2>
-        {automation ? (
-          <>
-            {editedSteps.map((s) => (
+        {!automation ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="skeleton" style={{ height: 80, animationDelay: `${i * 100}ms` }} />
+            ))}
+          </div>
+        ) : editedSteps.length === 0 ? (
+          <div className="empty-state">
+            <h3>No steps</h3>
+            <p>This automation has no steps yet.</p>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {editedSteps.map((s, idx) => (
               <div
                 key={s.step_id}
-                style={{
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                  padding: 12,
-                  marginBottom: 12,
-                }}
+                className="step-card"
+                style={{ animationDelay: `${idx * 60}ms` }}
               >
-                <div style={{ marginBottom: 8 }}>
-                  <strong>Step {s.step_order}</strong> ({s.action_type})
-                </div>
-                <div style={{ marginBottom: 8 }}>
-                  <label>
-                    Description{" "}
-                    <input
-                      style={{ width: 420, maxWidth: "100%" }}
-                      value={s.description}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setEditedSteps((prev) =>
-                          prev.map((x) => (x.step_id === s.step_id ? { ...x, description: v } : x)),
-                        );
-                      }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: 8 }}>
-                  <label>
-                    Value{" "}
-                    <input
-                      style={{ width: 420, maxWidth: "100%" }}
-                      value={s.value}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setEditedSteps((prev) =>
-                          prev.map((x) => (x.step_id === s.step_id ? { ...x, value: v } : x)),
-                        );
-                      }}
-                    />
-                  </label>
+                <div className="step-number">{s.step_order}</div>
+                <div className="step-content">
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
+                    <div>
+                      <label>Description</label>
+                      <input
+                        value={s.description}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setEditedSteps((prev) =>
+                            prev.map((x) => (x.step_id === s.step_id ? { ...x, description: v } : x)),
+                          );
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label>Value</label>
+                      <input
+                        value={s.value}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setEditedSteps((prev) =>
+                            prev.map((x) => (x.step_id === s.step_id ? { ...x, value: v } : x)),
+                          );
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="badge badge-muted">{s.action_type}</span>
+                    <button
+                      className="btn-danger btn-sm"
+                      onClick={() => onDeleteStep(s.step_id)}
+                      disabled={running || editedSteps.length <= 1}
+                      style={{ marginLeft: "auto" }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
-
-            <button onClick={onSaveSteps} disabled={running}>
-              Save steps
-            </button>
-          </>
-        ) : (
-          <div>Loading automation...</div>
+          </div>
         )}
-      </section>
+      </div>
     </div>
   );
 }
-

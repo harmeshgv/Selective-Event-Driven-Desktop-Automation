@@ -59,14 +59,33 @@ def create_log(payload: StructuredLogIn, db: Session = Depends(get_db)) -> dict:
 @router.get("/logs", response_model=List[dict])
 def list_logs(
     limit: int = Query(200, ge=1, le=1000),
+    since_id: Optional[int] = Query(None, ge=1),
     db: Session = Depends(get_db),
 ) -> List[dict]:
-    rows = (
-        db.query(ObservedLog)
-        .order_by(ObservedLog.timestamp.desc())
-        .limit(limit)
-        .all()
+    query = db.query(
+        ObservedLog.id,
+        ObservedLog.timestamp,
+        ObservedLog.app,
+        ObservedLog.action,
+        ObservedLog.coordinates,
+        ObservedLog.text,
+        ObservedLog.screenshot_path,
     )
+    if since_id is not None:
+        rows = (
+            query
+            .filter(ObservedLog.id > since_id)
+            .order_by(ObservedLog.id.asc())
+            .limit(limit)
+            .all()
+        )
+    else:
+        rows = (
+            query
+            .order_by(ObservedLog.timestamp.desc())
+            .limit(limit)
+            .all()
+        )
     return [
         {
             "id": r.id,

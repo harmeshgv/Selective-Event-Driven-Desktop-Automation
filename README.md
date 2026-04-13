@@ -69,3 +69,25 @@ You can edit the step definitions before executing:
 2. Update its steps (all step fields required by this MVP endpoint):
    - `PUT http://localhost:8000/automations/<AUTOMATION_ID>/steps`
 
+## Repeated Task Explanations
+
+Repeated task groups in the dashboard now support an `Explain Task` action.
+
+- Backend endpoint:
+  - `POST /tasks/explain`
+- Request body:
+  - `{"task_id":12,"task_name":"Open linkedin -> Open jobs","signature":"...","actions":["VIEW:linkedin","VIEW:jobs","SUBMIT_TEXT:machine learning intern","CLICK:job"],"repeat_count":7,"last_used":"2026-04-08T12:34:56+00:00","confidence_score":0.91}`
+- Response body:
+  - Returns a concise explanation of the user's likely intent plus metadata about whether the result came from cache or fallback logic.
+
+The backend sends the full repeated-task context it has to the explainer, including task metadata, the filtered action list, and a structured breakdown of views, text inputs, click targets, and app contexts. Low-signal noise like mouse movement and coordinates is excluded.
+
+To use a Groq-compatible model, configure these environment variables in `.env`:
+
+- `TASK_EXPLAINER_PROVIDER=groq`
+- `TASK_EXPLAINER_ENDPOINT=<your chat completions endpoint>`
+- `TASK_EXPLAINER_API_KEY=<your API key>`
+- `TASK_EXPLAINER_MODEL=<your model name>`
+
+If these values are not configured or the provider is unavailable, the backend falls back to a local heuristic explanation so the UI still works.
+

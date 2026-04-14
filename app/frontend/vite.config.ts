@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    strictPort: true,
     proxy: {
       // During local dev, forward API calls to the FastAPI backend.
       "/tasks": {
@@ -12,6 +13,10 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/automations": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/run/smart": {
         target: "http://localhost:8000",
         changeOrigin: true,
       },

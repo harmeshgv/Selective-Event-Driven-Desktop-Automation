@@ -13,37 +13,25 @@ from typing import Protocol
 from urllib import error, request
 
 
-PROMPT_TEMPLATE = """Infer real user intent from this trace payload.
+PROMPT_TEMPLATE = """You are a smart desktop assistant. A user clicked "Explain" on a detected repeated task. Your job is to explain what they were doing in plain English so anyone can understand it.
 
-Payload JSON (read all keys; includes raw + filtered views):
+Here is the detected task data:
 {actions_json}
 
-Repeat Count: {repeat_count}
+This pattern was seen {repeat_count} time(s).
 
-Rules:
-- Ground every claim in payload evidence.
-- Prefer specific goal statements; avoid vague filler.
-- If evidence is insufficient, say unknown and what is missing.
-- Do not narrate every step mechanically.
+Write a SHORT explanation (3-4 sentences max, one paragraph). Rules:
+- Talk directly to the user: "You were...", "You kept...", "You repeatedly..."
+- Say WHAT they were doing, on WHICH app/website, and WHY it looks automatable.
+- Be specific: mention the actual app names, search terms, or pages from the data.
+- Do NOT use bullet points, numbered lists, or section headers.
+- Do NOT be vague or generic. Use the real data.
+- Sound like a helpful assistant, not a robot.
 
-Output exactly this structure:
-1. High-level behavior overview.
-2. Two lines:
-   DETECTED: <observed repeated behavior from payload>
-   REAL INTENT: <specific user goal inferred from evidence>
-3. Repetition pattern/loop explanation.
-4. Name the repeated task in one sentence.
-5. Why repetition is happening.
-6. Completion status (succeeded/failed/partial/unknown) with reason.
-7. One-line summary.
-
-Then output exactly:
+After the paragraph, on a new line write exactly:
 ---METADATA---
-SUMMARY: <same as section 7>
-INTENT: <distilled REAL INTENT, concrete>
 IS_REPEATED: <true|false>
-REPEATED_CONFIDENCE: <0.00-1.00>
-REPEATED_REASON: <short evidence-based reason>"""
+REPEATED_CONFIDENCE: <0.00-1.00>"""
 
 # Model output delimiter (must match prompt). Narrative is shown in UI; lines after this are parsed only.
 METADATA_MARKERS = ("\n---METADATA---\n", "\n---METADATA---", "---METADATA---")
@@ -511,12 +499,7 @@ def _parse_llm_result(
         confidence_score=confidence_score,
     )
 
-    if narrative.strip():
-        explanation = narrative.strip()
-    else:
-        summary = fields.get("SUMMARY", "")
-        intent = fields.get("INTENT", "")
-        explanation = _post_process_explanation(f"{summary} {intent}".strip()) or _post_process_explanation(raw)
+    explanation = narrative.strip() if narrative.strip() else _post_process_explanation(raw)
 
     parsed_bool = _parse_bool_token(fields.get("IS_REPEATED", ""))
     parsed_score_raw = fields.get("REPEATED_CONFIDENCE", "")
@@ -524,9 +507,8 @@ def _parse_llm_result(
         parsed_score = _clamp01(float(parsed_score_raw)) if parsed_score_raw else heur_score
     except ValueError:
         parsed_score = heur_score
-    repeated_reason = fields.get("REPEATED_REASON", "").strip() or heur_reason
     is_repeated = parsed_bool if parsed_bool is not None else heur_rep
-    return explanation, is_repeated, parsed_score, repeated_reason
+    return explanation, is_repeated, parsed_score, heur_reason
 
 
 def _infer_platform(actions: list[str]) -> str:
@@ -590,110 +572,47 @@ def _infer_object(actions: list[str]) -> str:
     return nouns[-1] if nouns else ""
 
 
-def _heuristic_explanation_body(actions: list[str], repeat_count: int) -> tuple[str, str, str]:
-    """Returns (section1_6_and_7_text, one_line_summary, intent_phrase) for structured fallback."""
+def _heuristic_paragraph(actions: list[str], repeat_count: int) -> str:
+    """Build a simple, human-friendly paragraph explaining the detected task."""
     platform = _infer_platform(actions)
     search_term = _infer_search_term(actions)
     obj = _infer_object(actions)
-    first_steps = ", ".join(actions[:4]) if actions else "unknown steps"
 
     if search_term and platform:
-        s7 = f'Repeated workflow on {platform} involving search for "{search_term}".'
-        body = (
-            f"1. Repeated session on {platform} with typed search-like input in the trace.\n"
-            f'2. DETECTED: Pattern includes text matching "{search_term}" and UI context on {platform}; '
-            f"repeat_count={repeat_count} in our detector (heuristic fallback).\n"
-            f'   REAL INTENT: User is likely trying to find, filter, or revisit content on {platform} related to "{search_term}" '
-            f"(e.g. listings, results, or records) - not just random browsing.\n"
-            f"3. Same class of actions (views/clicks + that query) recurs across observations.\n"
-            f"4. Repeated task: search-and-review workflow on {platform} around that topic.\n"
-            f"5. Repetition may mean refining results, comparing items, or habitually re-running the same lookup.\n"
-            f"6. Completion: unknown - trace does not show a definitive end state.\n"
-            f"7. {s7}"
-        )
         return (
-            body,
-            s7,
-            f'On {platform}, repeatedly search or drill into results for "{search_term}" (intent from typed + context evidence)',
+            f'You were repeatedly searching for "{search_term}" on {platform}. '
+            f"This pattern was detected {repeat_count} time(s) - each time you navigated to {platform}, "
+            f"typed your query, and browsed through results. "
+            f"This is a routine workflow that could be automated so you just review the results instead of repeating the same steps."
         )
     if search_term:
-        s7 = f'Repeated workflow involving typed input "{search_term}".'
-        body = (
-            "1. Recurring text-entry-heavy workflow in the trace.\n"
-            f'2. DETECTED: Multiple steps involve submitted/typed text containing "{search_term}"; repeat_count={repeat_count}.\n'
-            f'   REAL INTENT: User is probably trying to complete a lookup, form, or filter whose content centers on "{search_term}".\n'
-            "3. Typed-step family repeats across the captured workflow.\n"
-            "4. Repeated task: re-using the same textual focus in a multi-step flow.\n"
-            "5. Repetition may be corrections, retries, or multi-page use of the same query.\n"
-            "6. Completion: unknown.\n"
-            f"7. {s7}"
-        )
         return (
-            body,
-            s7,
-            f'Repeatedly enter or submit text around "{search_term}" to drive a lookup or form (heuristic intent)',
+            f'You kept typing "{search_term}" as part of a repeated workflow. '
+            f"This same search or input pattern appeared {repeat_count} time(s) across your sessions. "
+            f"Since you're entering the same thing repeatedly, this could be automated to save you the effort."
         )
     if obj and platform:
-        s7 = f'Repeated interaction with "{obj}" while using {platform}.'
-        body = (
-            f'1. User keeps returning to "{obj}" inside {platform}.\n'
-            f'2. DETECTED: Clicks/views reference "{obj}" in {platform} context; repeat_count={repeat_count}.\n'
-            f'   REAL INTENT: Likely trying to finish or re-check something that involves "{obj}" '
-            f"(open it, act on it, or move through a flow anchored on that UI element).\n"
-            "3. Click/view loop around the same target class.\n"
-            f'4. Repeated task: "{obj}"-centric workflow on {platform}.\n'
-            "5. Repetition suggests retries, multi-step completion, or uncertainty about state.\n"
-            "6. Completion: unknown.\n"
-            f"7. {s7}"
-        )
         return (
-            body,
-            s7,
-            f'On {platform}, repeatedly work toward completing or verifying actions involving "{obj}"',
+            f'You were repeatedly interacting with "{obj}" on {platform}. '
+            f"This pattern showed up {repeat_count} time(s) - you kept navigating to the same area and performing similar actions. "
+            f"This looks like a routine task that could be streamlined or automated."
         )
     if platform:
-        s7 = f"Repeated workflow pattern in {platform}."
-        body = (
-            f"1. Stable repeated shape of actions inside {platform}.\n"
-            f"2. DETECTED: repeat_count={repeat_count}; step mix matches habitual use of {platform} (no strong text anchor in heuristic).\n"
-            f"   REAL INTENT: Unknown at fine granularity - user is doing a recurring in-app routine on {platform}, "
-            "not a one-off visit (goal may be browsing, maintenance, or task spread across screens).\n"
-            "3. Same workflow signature repeats.\n"
-            f"4. Repeated task: habitual multi-step flow in {platform}.\n"
-            "5. Repetition may be daily habit, incomplete goal, or exploratory navigation.\n"
-            "6. Completion: unknown.\n"
-            f"7. {s7}"
+        return (
+            f"You were going through the same series of steps on {platform} repeatedly. "
+            f"This workflow pattern was detected {repeat_count} time(s). "
+            f"Since you keep doing the same thing, FlowPilot can help automate this routine for you."
         )
-        return body, s7, f"Repeat a multi-step routine inside {platform} (specific sub-goal not proven by trace)"
     if obj:
-        s7 = f'Repeated focus on "{obj}".'
-        body = (
-            f'1. Interaction keeps centering on "{obj}".\n'
-            f'2. DETECTED: Multiple events target "{obj}"; repeat_count={repeat_count}.\n'
-            f'   REAL INTENT: User likely tries to drive a task forward using "{obj}" as the main control or surface '
-            "(exact app unknown in this heuristic branch).\n"
-            "3. Looping interactions on the same target.\n"
-            f'4. Repeated task: "{obj}"-driven micro-workflow.\n'
-            "5. Repetition may mean failed clicks, loading waits, or multi-attempt completion.\n"
-            "6. Completion: unknown.\n"
-            f"7. {s7}"
+        return (
+            f'You kept coming back to "{obj}" and performing similar actions around it. '
+            f"This pattern repeated {repeat_count} time(s). "
+            f"It looks like a routine task that could benefit from automation."
         )
-        return body, s7, f'Repeatedly act on "{obj}" to progress an unclear in-app goal (heuristic)'
-    s7 = f"Same workflow repeated {repeat_count}x (steps include [{first_steps}])."
-    body = (
-        f"1. Detector sees the same step sequence {repeat_count} time(s): [{first_steps}] ...\n"
-        f"2. DETECTED: Raw pattern repetition only - little semantic context in this branch.\n"
-        "   REAL INTENT: Not inferable beyond 'user repeated this exact macro-sequence'; need richer views/text in JSON.\n"
-        "3. Structural repeat of the action list.\n"
-        "4. Repeated task: the captured sequence as a single automatable unit.\n"
-        "5. Repetition reason unknown - could be habit, script-like behavior, or detector artifact.\n"
-        "6. Completion: unknown.\n"
-        f"7. {s7}"
-    )
     return (
-        body,
-        s7,
-        f"Repeat the detected action sequence {repeat_count}x; finer intent needs more labeled context in trace",
+        f"A repeated workflow pattern was detected {repeat_count} time(s) in your activity. "
+        f"You performed the same sequence of actions multiple times. "
+        f"This kind of repetitive task is a good candidate for automation."
     )
 
 
@@ -702,18 +621,15 @@ def _heuristic_explanation_with_metadata(
     repeat_count: int,
     confidence_score: float | None,
 ) -> str:
-    body, summary, intent = _heuristic_explanation_body(actions, repeat_count)
-    is_rep, score, reason = _heuristic_repeated_judgement(
+    paragraph = _heuristic_paragraph(actions, repeat_count)
+    is_rep, score, _reason = _heuristic_repeated_judgement(
         repeat_count=repeat_count,
         confidence_score=confidence_score,
     )
     return (
-        f"{body}\n\n---METADATA---\n"
-        f"SUMMARY: {summary}\n"
-        f"INTENT: {intent}\n"
+        f"{paragraph}\n\n---METADATA---\n"
         f"IS_REPEATED: {str(is_rep).lower()}\n"
-        f"REPEATED_CONFIDENCE: {score:.2f}\n"
-        f"REPEATED_REASON: {reason}"
+        f"REPEATED_CONFIDENCE: {score:.2f}"
     )
 
 
@@ -748,8 +664,8 @@ class OpenAICompatibleTaskExplainer:
         payload = {
             "model": self._model,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2,
-            "max_tokens": 1200,
+            "temperature": 0.3,
+            "max_tokens": 300,
         }
         body = json.dumps(payload, ensure_ascii=True).encode("utf-8")
         req = request.Request(

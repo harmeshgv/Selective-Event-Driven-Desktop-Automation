@@ -251,3 +251,98 @@ export function createAutomation(taskId: number): Promise<AutomationPlanOut> {
   return postJSON<{ task_id: number }, AutomationPlanOut>("/automations", { task_id: taskId });
 }
 
+// ---------------------------------------------------------------------------
+// Smart (LLM-powered) execution with SSE streaming
+// ---------------------------------------------------------------------------
+
+export type SmartRunStepEvent = {
+  step_order: number;
+  description: string;
+  action_type: string;
+  target: string;
+  value: string;
+  status: "pending" | "running" | "success" | "failed" | "corrected";
+  attempts: number;
+  error: string;
+  llm_reasoning: string;
+};
+
+export type SmartRunStartEvent = {
+  run_id: number;
+  automation_id: number;
+  plan_name: string;
+  risk_level: string;
+  total_steps: number;
+};
+
+export type SmartRunDoneEvent = {
+  status: "success" | "failed";
+  total_steps: number;
+  completed_steps: number;
+  error: string;
+};
+
+export type SmartRunCallbacks = {
+  onStart?: (data: SmartRunStartEvent) => void;
+  onStep?: (data: SmartRunStepEvent) => void;
+  onDone?: (data: SmartRunDoneEvent) => void;
+  onError?: (error: string) => void;
+};
+
+export async function runSmartAutomation(
+  automationId: number,
+  callbacks: SmartRunCallbacks,
+): Promise<void> {
+  const resp = await fetch("/run/smart", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ automation_id: automationId, approved: true }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    callbacks.onError?.(`Smart run failed: ${resp.status} ${text}`);
+    return;
+  }
+
+  const reader = resp.body?.getReader();
+  if (!reader) {
+    callbacks.onError?.("No response stream available");
+    return;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+
+    for (const part of parts) {
+      const lines = part.split("\n");
+      let eventType = "";
+      let dataStr = "";
+
+      for (const line of lines) {
+        if (line.startsWith("event: ")) eventType = line.slice(7).trim();
+        else if (line.startsWith("data: ")) dataStr = line.slice(6);
+      }
+
+      if (!eventType || !dataStr) continue;
+
+      try {
+        const data = JSON.parse(dataStr);
+        if (eventType === "start") callbacks.onStart?.(data);
+        else if (eventType === "step") callbacks.onStep?.(data);
+        else if (eventType === "done") callbacks.onDone?.(data);
+      } catch {
+        /* skip malformed events */
+      }
+    }
+  }
+}
+

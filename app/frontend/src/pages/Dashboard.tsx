@@ -292,22 +292,10 @@ export default function Dashboard() {
                 {/* Explain Panel */}
                 {taskExplanations[t.task_id] && (
                   <div className="explain-panel">
-                    <div style={{ marginBottom: 10 }}>{taskExplanations[t.task_id].explanation}</div>
-                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12 }}>
-                      <span>
-                        <strong>Repeated:</strong>{" "}
-                        <span style={{ color: taskExplanations[t.task_id].is_repeated ? "var(--success)" : "var(--warning)" }}>
-                          {taskExplanations[t.task_id].is_repeated ? "Yes" : "Uncertain"}
-                        </span>{" "}
-                        ({Math.round(taskExplanations[t.task_id].repeated_confidence * 100)}%)
-                      </span>
-                      {taskExplanations[t.task_id].repeated_reason && (
-                        <span style={{ color: "var(--text-tertiary)" }}>{taskExplanations[t.task_id].repeated_reason}</span>
-                      )}
-                    </div>
+                    {taskExplanations[t.task_id].explanation}
                     {taskExplanations[t.task_id].used_fallback && (
-                      <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-tertiary)" }}>
-                        Local fallback — LLM unavailable
+                      <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-tertiary)", fontStyle: "italic" }}>
+                        Local analysis — LLM unavailable
                       </div>
                     )}
                   </div>

@@ -411,7 +411,34 @@ def _is_informative_pattern(pattern: Sequence[NormalizedToken]) -> bool:
     if len(distinct_tokens) < 3:
         return False
     non_view = [token for token in pattern if token.family != "VIEW"]
-    return len(non_view) >= 2
+    if len(non_view) < 2:
+        return False
+
+    families = {token.family for token in non_view}
+    all_contexts = {token.context for token in pattern if token.context}
+    has_text = bool(families & {"TYPE_TEXT", "SUBMIT_TEXT"})
+    has_key = "KEY" in families
+    has_action = "ACTION" in families
+    high_signal = has_text or has_action
+
+    if families <= {"CLICK"}:
+        distinct_click_targets = {token.token for token in non_view}
+        if len(distinct_click_targets) < 3:
+            return False
+        if len(all_contexts) < 2:
+            return False
+
+    if families <= {"CLICK", "KEY"} and not has_text and not has_action:
+        if len(all_contexts) < 2:
+            return False
+        distinct_values = {token.value for token in non_view}
+        if len(distinct_values) < 2:
+            return False
+
+    if not high_signal and len(all_contexts) < 2:
+        return False
+
+    return True
 
 
 def _find_next_occurrence(
@@ -459,6 +486,18 @@ def _occurrence_overlap(left: PatternOccurrence, right: PatternOccurrence) -> in
     return max(0, end - start)
 
 
+def _extract_contexts(steps: list[str]) -> set[str]:
+    out: set[str] = set()
+    for s in steps:
+        if s.startswith("VIEW:"):
+            out.add(s.split(":", 1)[1])
+        elif s.startswith("CLICK:"):
+            _, _, ctx = s.split(":", 1)[1].partition("@")
+            if ctx:
+                out.add(ctx)
+    return out
+
+
 def _patterns_are_similar(left: Pattern, right: Pattern) -> bool:
     if left.signature == right.signature:
         return True
@@ -466,16 +505,22 @@ def _patterns_are_similar(left: Pattern, right: Pattern) -> bool:
     left_tokens = [_token_from_step(step) for step in left.steps]
     right_tokens = [_token_from_step(step) for step in right.steps]
     score = _sequence_similarity(left_tokens, right_tokens)
-    if score < 0.82:
-        return False
 
-    for left_occurrence in left.occurrences:
-        for right_occurrence in right.occurrences:
-            if _occurrence_overlap(left_occurrence, right_occurrence) >= min(
-                left_occurrence.end_index - left_occurrence.start_index,
-                right_occurrence.end_index - right_occurrence.start_index,
-            ) * 0.6:
-                return True
+    if score >= 0.60:
+        left_ctx = _extract_contexts(left.steps)
+        right_ctx = _extract_contexts(right.steps)
+        shared = left_ctx & right_ctx
+        if shared and len(shared) >= min(len(left_ctx), len(right_ctx)) * 0.5:
+            return True
+
+    if score >= 0.75:
+        for lo in left.occurrences:
+            for ro in right.occurrences:
+                overlap = _occurrence_overlap(lo, ro)
+                min_span = min(lo.end_index - lo.start_index, ro.end_index - ro.start_index)
+                if overlap >= min_span * 0.5:
+                    return True
+
     return False
 
 
@@ -507,10 +552,10 @@ def _token_from_step(step: str) -> NormalizedToken:
 def detect_repeated_sequences(
     events: List[Event],
     *,
-    min_pattern_steps: int = 3,
+    min_pattern_steps: int = 4,
     max_pattern_steps: int = 12,
     min_repetitions: int = 2,
-    min_similarity: float = 0.72,
+    min_similarity: float = 0.78,
     max_returned_patterns: int = 10,
 ) -> List[Pattern]:
     """
@@ -613,6 +658,8 @@ def detect_repeated_sequences(
 
     deduplicated: list[Pattern] = []
     for pattern in found:
+        if not _is_meaningful_task(pattern):
+            continue
         if any(_patterns_are_similar(pattern, accepted) for accepted in deduplicated):
             continue
         deduplicated.append(pattern)
@@ -620,6 +667,88 @@ def detect_repeated_sequences(
             break
 
     return deduplicated
+
+
+_NOISE_FAMILIES = {"CLICK", "VIEW"}
+
+
+def _is_meaningful_task(pattern: Pattern) -> bool:
+    """Reject patterns that look like aimless clicking / navigation noise.
+
+    A meaningful task must demonstrate purposeful, multi-step behaviour
+    across at least two distinct application contexts, or contain clear
+    text-input / submission actions that indicate intent.
+    """
+    steps = pattern.steps
+    if len(steps) < 4:
+        return False
+
+    families: list[str] = []
+    contexts: set[str] = set()
+    click_targets: set[str] = set()
+    has_text = False
+    has_action = False
+
+    for step in steps:
+        if step.startswith("VIEW:"):
+            families.append("VIEW")
+            contexts.add(step.split(":", 1)[1])
+        elif step.startswith("CLICK:"):
+            families.append("CLICK")
+            body = step.split(":", 1)[1]
+            click_targets.add(body)
+            _, _, ctx = body.partition("@")
+            if ctx:
+                contexts.add(ctx)
+        elif step.startswith("TYPE_TEXT:") or step.startswith("SUBMIT_TEXT:"):
+            families.append("TEXT")
+            has_text = True
+        elif step.startswith("KEY:"):
+            families.append("KEY")
+        elif step.startswith("ACTION:"):
+            families.append("ACTION")
+            has_action = True
+        else:
+            families.append("OTHER")
+
+    family_set = set(families)
+    non_noise = [f for f in families if f not in _NOISE_FAMILIES]
+    total = len(families)
+    noise_ratio = (total - len(non_noise)) / max(1, total)
+
+    # ── Rule 1: must involve at least 2 distinct window/app contexts ──
+    if len(contexts) < 2 and not has_text:
+        return False
+
+    # ── Rule 2: pure click+view patterns need heavy diversity ──
+    if family_set <= _NOISE_FAMILIES:
+        if len(click_targets) < 3 or len(contexts) < 2:
+            return False
+
+    # ── Rule 3: click+key only (no text, no action) is noise unless multi-context ──
+    if family_set <= {"CLICK", "VIEW", "KEY"} and not has_text and not has_action:
+        if len(contexts) < 2:
+            return False
+        if len(click_targets) < 2:
+            return False
+
+    # ── Rule 4: reject high noise-ratio without text intent ──
+    if noise_ratio > 0.80 and not has_text:
+        return False
+
+    # ── Rule 5: if zero high-signal steps, need many diverse targets ──
+    if len(non_noise) == 0 and len(click_targets) < 4:
+        return False
+
+    # ── Rule 6: confidence floor ──
+    if pattern.confidence < 0.40:
+        return False
+
+    # ── Rule 7: pattern must have repetitions > 1 (redundant guard) ──
+    if pattern.repetitions < 2:
+        return False
+
+    return True
 
 
 def _infer_step_label(token: str) -> str | None:
@@ -647,18 +776,30 @@ def _infer_step_label(token: str) -> str | None:
 
 
 def _infer_task_name(steps: list[str]) -> str:
-    labels: list[str] = []
+    priority_labels: list[str] = []
+    fallback_labels: list[str] = []
+
     for step in steps:
         label = _infer_step_label(step)
-        if label:
-            labels.append(label)
-        if len(labels) >= 2:
-            break
+        if not label:
+            continue
+        is_high_signal = (
+            step.startswith("TYPE_TEXT:")
+            or step.startswith("SUBMIT_TEXT:")
+            or step.startswith("ACTION:")
+            or step.startswith("KEY:")
+        )
+        if is_high_signal and len(priority_labels) < 2:
+            priority_labels.append(label)
+        elif len(fallback_labels) < 3:
+            fallback_labels.append(label)
+
+    labels = priority_labels or fallback_labels[:2]
     if not labels:
         return "Repeated workflow"
     if len(labels) == 1:
         return labels[0]
-    return f"{labels[0]} -> {labels[1]}"
+    return f"{labels[0]} + {labels[1]}"
 
 
 def _load_recent_events(db: Session, *, limit_logs: int) -> list[Event]:
@@ -753,7 +894,7 @@ def discover_and_persist_tasks(
     db: Session,
     limit_logs: int = 1000,
     segment_gap_seconds: int = 15,
-    min_steps: int = 4,
+    min_steps: int = 5,
     max_steps: int = 12,
 ) -> List[TaskGroupResult]:
     del segment_gap_seconds  # No longer needed after sequence-based detection.
@@ -866,6 +1007,46 @@ def _snapshot_confidence_from_frequency(frequency: int) -> float:
     return float(min(1.0, 0.18 + math.log1p(max(0, frequency)) * 0.14))
 
 
+def _steps_look_meaningful(step_strs: list[str]) -> bool:
+    """Quick check on persisted steps to filter out previously-saved noise."""
+    if len(step_strs) < 4:
+        return False
+    families: set[str] = set()
+    contexts: set[str] = set()
+    click_targets: set[str] = set()
+    has_text = False
+    for s in step_strs:
+        if s.startswith("VIEW:"):
+            families.add("VIEW")
+            contexts.add(s.split(":", 1)[1])
+        elif s.startswith("CLICK:"):
+            families.add("CLICK")
+            click_targets.add(s.split(":", 1)[1])
+            _, _, ctx = s.split(":", 1)[1].partition("@")
+            if ctx:
+                contexts.add(ctx)
+        elif s.startswith("TYPE_TEXT:") or s.startswith("SUBMIT_TEXT:"):
+            families.add("TEXT")
+            has_text = True
+        elif s.startswith("KEY:"):
+            families.add("KEY")
+        elif s.startswith("ACTION:"):
+            families.add("ACTION")
+
+    if len(contexts) < 2 and not has_text:
+        return False
+    if families <= {"CLICK", "VIEW"}:
+        if len(click_targets) < 3 or len(contexts) < 2:
+            return False
+    if families <= {"CLICK", "VIEW", "KEY"} and not has_text:
+        if len(contexts) < 2:
+            return False
+    non_noise = families - {"CLICK", "VIEW"}
+    if len(non_noise) == 0 and len(click_targets) < 4:
+        return False
+    return True
+
+
 def load_persisted_tasks_snapshot(db: Session) -> list[TaskGroupResult]:
     """Fast path: read task_patterns + task_steps only (no log scan / pattern detection)."""
     task_rows = db.query(TaskPattern).order_by(TaskPattern.frequency.desc()).all()
@@ -878,6 +1059,10 @@ def load_persisted_tasks_snapshot(db: Session) -> list[TaskGroupResult]:
             .all()
         )
         step_strs = [r.step for r in step_rows]
+
+        if not _steps_look_meaningful(step_strs):
+            continue
+
         lu = tp.last_used
         last_used = lu.astimezone(timezone.utc).isoformat() if lu.tzinfo else lu.replace(tzinfo=timezone.utc).isoformat()
         out.append(

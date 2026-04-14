@@ -283,6 +283,87 @@ def _sanitize_steps(steps: list[dict]) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Noise filtering — remove app-switching, launcher, and FlowPilot actions
+# ---------------------------------------------------------------------------
+
+_NOISE_VIEWS = {
+    "flowpilot", "search", "google chrome", "task manager",
+    "desktop", "taskbar", "start menu", "start", "file explorer",
+    "settings", "microsoft store",
+}
+
+_NOISE_PREFIXES = ("MOVE", "SCREENSHOT", "screenshot", "mouse_move")
+
+
+def _is_noise_action(action: str, dominant_context: str) -> bool:
+    lowered = action.lower().strip()
+
+    if any(lowered.startswith(p.lower()) for p in _NOISE_PREFIXES):
+        return True
+
+    kind, _, payload = action.partition(":")
+    kind_up = kind.strip().upper()
+    payload_clean = payload.strip().lower()
+
+    if kind_up == "VIEW" and payload_clean in _NOISE_VIEWS:
+        return True
+
+    # Short app-launcher searches like "chr", "not", "exc" — clearly not part of the workflow
+    if kind_up in ("SUBMIT_TEXT", "TYPE_TEXT") and len(payload.strip()) <= 4 and " " not in payload.strip():
+        return True
+
+    # Clicks/views on FlowPilot itself
+    if "flowpilot" in payload_clean:
+        return True
+
+    return False
+
+
+def _find_dominant_context(actions: list[str]) -> str:
+    """Find the most frequent VIEW context — that's the main app/site."""
+    counts: dict[str, int] = {}
+    for action in actions:
+        kind, _, payload = action.partition(":")
+        if kind.strip().upper() != "VIEW":
+            continue
+        ctx = payload.strip().lower()
+        if ctx and ctx not in _NOISE_VIEWS:
+            counts[ctx] = counts.get(ctx, 0) + 1
+    if not counts:
+        return ""
+    return max(counts, key=lambda k: counts[k])
+
+
+def _filter_noise(actions: list[str]) -> list[str]:
+    """Remove noise actions and trailing app-switch garbage."""
+    if not actions:
+        return actions
+
+    dominant = _find_dominant_context(actions)
+
+    # First pass: mark each action as signal or noise
+    cleaned = []
+    trailing_noise_count = 0
+    for action in actions:
+        if _is_noise_action(action, dominant):
+            trailing_noise_count += 1
+            continue
+        # If we had noise, and now we're back to signal, reset counter
+        trailing_noise_count = 0
+        cleaned.append(action)
+
+    # If we removed everything, keep originals (better than nothing)
+    if not cleaned:
+        return actions
+
+    _LOGGER.info(
+        "Noise filter: %d raw -> %d clean (removed %d noise actions)",
+        len(actions), len(cleaned), len(actions) - len(cleaned),
+    )
+    return cleaned
+
+
+# ---------------------------------------------------------------------------
 # Core: understand task from raw data, build & execute automation
 # ---------------------------------------------------------------------------
 
@@ -296,18 +377,21 @@ class TaskContext:
 
 
 def _build_task_prompt(ctx: TaskContext) -> str:
+    # Filter noise BEFORE sending to LLM
+    clean_actions = _filter_noise(ctx.raw_actions)
+
     full_json = json.dumps({
         "task_name": ctx.task_name,
         "times_repeated": ctx.frequency,
-        "signature": ctx.signature,
-        "raw_actions": [
+        "total_raw_actions": len(ctx.raw_actions),
+        "cleaned_actions": [
             {"step": i + 1, "action": a}
-            for i, a in enumerate(ctx.raw_actions)
+            for i, a in enumerate(clean_actions)
         ],
     }, indent=2, ensure_ascii=True)
 
     return (
-        f"Here is the COMPLETE task data as JSON:\n\n{full_json}\n\n"
+        f"Here is the task data (noise-filtered) as JSON:\n\n{full_json}\n\n"
         f"ACTION FORMAT GUIDE:\n"
         f"- VIEW:page title = user viewed/navigated to a page\n"
         f"- CLICK:target@context = user clicked something\n"

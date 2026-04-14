@@ -31,9 +31,23 @@ app.add_middleware(
 )
 
 
+def _run_migrations(eng) -> None:
+    """Add columns that were introduced after initial create_all."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(eng)
+    if "automation_plans" in inspector.get_table_names():
+        columns = {c["name"] for c in inspector.get_columns("automation_plans")}
+        if "cached_llm_steps" not in columns:
+            with eng.begin() as conn:
+                conn.execute(text("ALTER TABLE automation_plans ADD COLUMN cached_llm_steps TEXT DEFAULT ''"))
+            log.info("Migrated: added cached_llm_steps to automation_plans")
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     Base.metadata.create_all(bind=engine)
+    _run_migrations(engine)
     log.info("DB tables ensured")
     # Seed demo content for immediate preview/run testing.
     from backend.db.session import SessionLocal

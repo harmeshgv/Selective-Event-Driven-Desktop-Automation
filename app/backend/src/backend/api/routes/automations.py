@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.api.routes.logs import get_db
-from backend.db.models import AutomationPlan, AutomationStep
+from backend.db.models import AutomationPlan, AutomationStep, TaskPattern, TaskStep
 
 
 router = APIRouter()
@@ -28,6 +28,8 @@ class AutomationPlanOut(BaseModel):
     risk_level: str
     plan_text: str
     steps: list[AutomationStepOut]
+    raw_actions: list[str] = []
+    has_cached_plan: bool = False
 
 
 def _plan_to_out(db: Session, plan: AutomationPlan) -> AutomationPlanOut:
@@ -37,12 +39,20 @@ def _plan_to_out(db: Session, plan: AutomationPlan) -> AutomationPlanOut:
         .order_by(AutomationStep.step_order.asc())
         .all()
     )
+    raw_task_steps = (
+        db.query(TaskStep)
+        .filter(TaskStep.task_id == plan.task_id)
+        .order_by(TaskStep.step_order.asc())
+        .all()
+    )
     return AutomationPlanOut(
         automation_id=plan.id,
         task_id=plan.task_id,
         name=plan.name,
         risk_level=plan.risk_level,
         plan_text=plan.plan_text,
+        raw_actions=[r.step for r in raw_task_steps],
+        has_cached_plan=bool(plan.cached_llm_steps and plan.cached_llm_steps.strip()),
         steps=[
             AutomationStepOut(
                 step_id=s.id,

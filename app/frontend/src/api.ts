@@ -45,6 +45,8 @@ export type AutomationPlanOut = {
   risk_level: string;
   plan_text: string;
   steps: AutomationStepOut[];
+  raw_actions: string[];
+  has_cached_plan: boolean;
 };
 
 export type RunAutomationIn = {

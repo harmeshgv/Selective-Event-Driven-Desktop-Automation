@@ -296,14 +296,28 @@ class TaskContext:
 
 
 def _build_task_prompt(ctx: TaskContext) -> str:
-    actions_formatted = "\n".join(f"  {i+1}. {a}" for i, a in enumerate(ctx.raw_actions))
+    full_json = json.dumps({
+        "task_name": ctx.task_name,
+        "times_repeated": ctx.frequency,
+        "signature": ctx.signature,
+        "raw_actions": [
+            {"step": i + 1, "action": a}
+            for i, a in enumerate(ctx.raw_actions)
+        ],
+    }, indent=2, ensure_ascii=True)
+
     return (
-        f"Task name: {ctx.task_name}\n"
-        f"Times repeated: {ctx.frequency}\n\n"
-        f"RAW USER ACTIONS (recorded from their desktop):\n{actions_formatted}\n\n"
-        f"Understand what the user was doing and create an automation.\n"
-        f"Remember: ONLY use chrome_profile_picker, chrome_open_url, open_url, wait, etc.\n"
-        f"DO NOT use any playwright actions. Build the search/page URL directly."
+        f"Here is the COMPLETE task data as JSON:\n\n{full_json}\n\n"
+        f"ACTION FORMAT GUIDE:\n"
+        f"- VIEW:page title = user viewed/navigated to a page\n"
+        f"- CLICK:target@context = user clicked something\n"
+        f"- TYPE_TEXT:text = user typed text\n"
+        f"- SUBMIT_TEXT:text = user submitted text (search, form)\n"
+        f"- KEY:<KEYNAME> = user pressed a key\n"
+        f"- ACTION:name@context = user performed an action\n\n"
+        f"Understand the user's GOAL from these actions and create a simple automation.\n"
+        f"ONLY use: chrome_profile_picker, chrome_open_url, open_url, wait, run_command, type, key_press, hotkey.\n"
+        f"DO NOT use playwright actions. Build URLs directly with search queries encoded in them."
     )
 
 
@@ -458,5 +472,65 @@ def execute_with_llm(
     yield ExecutionDoneEvent(
         status="success",
         total_steps=len(executable_steps),
+        completed_steps=completed,
+    )
+
+
+def execute_cached_steps(
+    cached_steps: list[dict],
+    engine_execute_fn,
+) -> Generator[ExecutionStepEvent | ExecutionDoneEvent, None, None]:
+    """Re-run previously successful steps from cache. No LLM calls needed."""
+    _LOGGER.info("Executing %d cached steps (no LLM call)", len(cached_steps))
+
+    yield ExecutionStepEvent(
+        step_order=0,
+        description="Using cached automation plan (previously successful)",
+        action_type="planning",
+        target="", value="",
+        status="success", attempts=0,
+        llm_reasoning="Reusing steps from last successful run — no LLM call needed",
+    )
+
+    completed = 0
+    for i, step in enumerate(cached_steps):
+        step_order = step.get("step_order", i + 1)
+        desc = step.get("description", f"Step {step_order}")
+
+        yield ExecutionStepEvent(
+            step_order=step_order, description=desc,
+            action_type=step.get("action_type", "noop"),
+            target=step.get("target", ""), value=step.get("value", ""),
+            status="running", attempts=0,
+            llm_reasoning="cached",
+        )
+
+        try:
+            ok, err = engine_execute_fn(step)
+        except Exception as exc:
+            ok, err = False, str(exc)
+
+        yield ExecutionStepEvent(
+            step_order=step_order, description=desc,
+            action_type=step.get("action_type", "noop"),
+            target=step.get("target", ""), value=step.get("value", ""),
+            status="success" if ok else "failed", attempts=1,
+            error="" if ok else err,
+            llm_reasoning="cached",
+        )
+
+        if ok:
+            completed += 1
+        else:
+            yield ExecutionDoneEvent(
+                status="failed", total_steps=len(cached_steps),
+                completed_steps=completed,
+                error=f"Cached step {step_order} failed: {err}",
+            )
+            return
+
+    yield ExecutionDoneEvent(
+        status="success",
+        total_steps=len(cached_steps),
         completed_steps=completed,
     )

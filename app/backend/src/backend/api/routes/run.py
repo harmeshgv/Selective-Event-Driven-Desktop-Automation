@@ -225,6 +225,18 @@ def run_smart(payload: SmartRunIn, db: Session = Depends(get_db)):
     db.add(run)
     db.commit()
     db.refresh(run)
+    # Check for cached LLM plan from a previous successful run.
+    cached_plan_json = plan.cached_llm_steps or ""
+    cached_steps: list[dict] | None = None
+    if cached_plan_json.strip():
+        try:
+            parsed = json.loads(cached_plan_json)
+            if isinstance(parsed, dict) and isinstance(parsed.get("steps"), list):
+                cached_steps = parsed["steps"]
+                _log.info("Found cached LLM plan with %d steps for automation %d", len(cached_steps), plan.id)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     run_id = run.id
     plan_name = plan.name
     risk_level = plan.risk_level
@@ -234,30 +246,47 @@ def run_smart(payload: SmartRunIn, db: Session = Depends(get_db)):
     task_signature = task.signature
 
     def stream():
-        from ai.llm_executor import ExecutionDoneEvent, ExecutionStepEvent, TaskContext, execute_with_llm
+        from ai.llm_executor import ExecutionDoneEvent, ExecutionStepEvent, TaskContext, execute_with_llm, execute_cached_steps
 
-        task_ctx = TaskContext(
-            task_name=task_name,
-            raw_actions=raw_actions,
-            frequency=task_frequency,
-            signature=task_signature,
-        )
+        use_cache = cached_steps is not None
 
-        yield _sse_event("start", {
-            "run_id": run_id,
-            "automation_id": plan_id,
-            "plan_name": plan_name,
-            "risk_level": risk_level,
-            "total_steps": len(raw_actions),
-            "task_name": task_name,
-            "raw_action_count": len(raw_actions),
-        })
+        if use_cache:
+            yield _sse_event("start", {
+                "run_id": run_id,
+                "automation_id": plan_id,
+                "plan_name": plan_name,
+                "risk_level": risk_level,
+                "total_steps": len(cached_steps),
+                "task_name": task_name,
+                "raw_action_count": len(raw_actions),
+                "using_cache": True,
+            })
+            event_gen = execute_cached_steps(cached_steps, _execute_single_step)
+        else:
+            task_ctx = TaskContext(
+                task_name=task_name,
+                raw_actions=raw_actions,
+                frequency=task_frequency,
+                signature=task_signature,
+            )
+            yield _sse_event("start", {
+                "run_id": run_id,
+                "automation_id": plan_id,
+                "plan_name": plan_name,
+                "risk_level": risk_level,
+                "total_steps": len(raw_actions),
+                "task_name": task_name,
+                "raw_action_count": len(raw_actions),
+                "using_cache": False,
+            })
+            event_gen = execute_with_llm(task_ctx, _execute_single_step)
 
         final_status = "failed"
         final_error = ""
         run_step_rows = []
+        successful_steps = []
 
-        for event in execute_with_llm(task_ctx, _execute_single_step):
+        for event in event_gen:
             if isinstance(event, ExecutionStepEvent):
                 yield _sse_event("step", {
                     "step_order": event.step_order,
@@ -270,6 +299,14 @@ def run_smart(payload: SmartRunIn, db: Session = Depends(get_db)):
                     "error": event.error,
                     "llm_reasoning": event.llm_reasoning,
                 })
+                if event.status == "success" and event.action_type != "planning":
+                    successful_steps.append({
+                        "step_order": event.step_order,
+                        "description": event.description,
+                        "action_type": event.action_type,
+                        "target": event.target,
+                        "value": event.value,
+                    })
                 if event.status in ("success", "failed"):
                     run_step_rows.append(
                         AutomationRunStep(
@@ -307,6 +344,16 @@ def run_smart(payload: SmartRunIn, db: Session = Depends(get_db)):
                     attempts=rs.attempts,
                     error=rs.error,
                 ))
+
+            # Cache successful steps for reuse
+            if final_status == "success" and successful_steps:
+                plan_row = persist_db.query(AutomationPlan).filter(AutomationPlan.id == plan_id).one()
+                plan_row.cached_llm_steps = json.dumps({
+                    "intent": task_name,
+                    "steps": successful_steps,
+                }, ensure_ascii=True)
+                _log.info("Cached %d working steps for automation %d", len(successful_steps), plan_id)
+
             persist_db.commit()
         except Exception:
             _log.exception("Failed to persist smart run results")

@@ -55,8 +55,9 @@ class AutomationPlan(Base):
     task_id: Mapped[int] = mapped_column(ForeignKey("task_patterns.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(256), default="")
     risk_level: Mapped[str] = mapped_column(String(32), default="medium")  # low|medium|high
-    # For MVP: store a JSON-ish string representation (will be parsed by backend/clients).
     plan_text: Mapped[str] = mapped_column(Text, default="")
+    # LLM-generated steps that ran successfully — reused on next execution.
+    cached_llm_steps: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

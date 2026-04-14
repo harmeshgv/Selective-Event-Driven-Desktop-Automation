@@ -401,12 +401,57 @@ export default function AutomationDetail() {
         </div>
       )}
 
-      {/* Preview (only show when not in smart mode or no live steps) */}
-      {preview && liveSteps.length === 0 && (
+      {/* Raw Task Actions — what the user actually did */}
+      {automation && automation.raw_actions.length > 0 && liveSteps.length === 0 && (
         <div style={{ marginBottom: 24 }}>
-          <h3 className="section-title">Execution Preview</h3>
-          <div className="card-inset" style={{ fontFamily: "var(--mono)", fontSize: 12, whiteSpace: "pre-wrap", maxHeight: 260, overflow: "auto" }}>
-            {JSON.stringify(preview.steps, null, 2)}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <h3 className="section-title" style={{ margin: 0 }}>
+              Recorded User Actions ({automation.raw_actions.length})
+            </h3>
+            {automation.has_cached_plan && (
+              <span className="badge badge-success" style={{ fontSize: 10 }}>
+                Cached plan available
+              </span>
+            )}
+          </div>
+          <div
+            className="card-inset"
+            style={{ maxHeight: 300, overflow: "auto", padding: 0 }}
+          >
+            {automation.raw_actions.map((action, i) => {
+              const [kind, ...rest] = action.split(":");
+              const payload = rest.join(":");
+              return (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "6px 12px",
+                    borderBottom: "1px solid rgba(255,255,255,0.05)",
+                    fontSize: 12,
+                  }}
+                >
+                  <span style={{ fontWeight: 600, fontSize: 10, minWidth: 20, color: "var(--text-tertiary)" }}>
+                    {i + 1}
+                  </span>
+                  <span
+                    className="badge badge-muted"
+                    style={{ fontSize: 10, minWidth: 60, textAlign: "center" }}
+                  >
+                    {kind}
+                  </span>
+                  <span style={{ fontFamily: "var(--mono)", color: "var(--text-secondary, #ccc)" }}>
+                    {payload || "\u2014"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 6 }}>
+            This is the raw data sent to the AI. It will understand the intent and create the automation from scratch.
+            {automation.has_cached_plan && " A previously successful plan will be reused (instant, no LLM call)."}
           </div>
         </div>
       )}

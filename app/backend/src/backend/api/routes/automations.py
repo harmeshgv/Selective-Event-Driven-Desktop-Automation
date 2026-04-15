@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.api.routes.logs import get_db
-from backend.db.models import AutomationPlan, AutomationStep, TaskPattern, TaskStep
+from backend.db.models import AutomationPlan, AutomationRun, AutomationRunStep, AutomationStep, TaskPattern, TaskStep
 
 
 router = APIRouter()
@@ -45,13 +45,18 @@ def _plan_to_out(db: Session, plan: AutomationPlan) -> AutomationPlanOut:
         .order_by(TaskStep.step_order.asc())
         .all()
     )
+    from ai.llm_executor import _filter_noise
+
+    all_raw = [r.step for r in raw_task_steps]
+    clean_raw = _filter_noise(all_raw)
+
     return AutomationPlanOut(
         automation_id=plan.id,
         task_id=plan.task_id,
         name=plan.name,
         risk_level=plan.risk_level,
         plan_text=plan.plan_text,
-        raw_actions=[r.step for r in raw_task_steps],
+        raw_actions=clean_raw,
         has_cached_plan=bool(plan.cached_llm_steps and plan.cached_llm_steps.strip()),
         steps=[
             AutomationStepOut(
@@ -165,7 +170,56 @@ def update_automation_steps(
         step_row.value = s_in.value
         step_row.retry_count = s_in.retry_count
 
+    # Clear cached LLM plan so next AI execution generates a fresh one.
+    plan.cached_llm_steps = ""
+
     db.commit()
 
     return _plan_to_out(db, plan)
+
+
+class ResetAutomationOut(BaseModel):
+    automation_id: int
+    deleted_runs: int
+    deleted_run_steps: int
+    deleted_steps: int
+    cache_cleared: bool
+
+
+@router.post("/automations/{automation_id}/reset", response_model=ResetAutomationOut)
+def reset_automation(
+    automation_id: int,
+    db: Session = Depends(get_db),
+) -> ResetAutomationOut:
+    """Wipe everything for this automation: cache, runs, run steps, and regenerate steps from scratch."""
+    plan = db.query(AutomationPlan).filter(AutomationPlan.id == automation_id).one_or_none()
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Unknown automation_id")
+
+    # Delete all run steps for runs of this plan
+    run_ids = [r.id for r in db.query(AutomationRun.id).filter(AutomationRun.plan_id == plan.id).all()]
+    deleted_run_steps = 0
+    if run_ids:
+        deleted_run_steps = db.query(AutomationRunStep).filter(AutomationRunStep.run_id.in_(run_ids)).delete(synchronize_session=False)
+
+    # Delete all runs
+    deleted_runs = db.query(AutomationRun).filter(AutomationRun.plan_id == plan.id).delete(synchronize_session=False)
+
+    # Delete all automation steps
+    deleted_steps = db.query(AutomationStep).filter(AutomationStep.plan_id == plan.id).delete(synchronize_session=False)
+
+    # Clear cache
+    had_cache = bool(plan.cached_llm_steps and plan.cached_llm_steps.strip())
+    plan.cached_llm_steps = ""
+    plan.plan_text = ""
+
+    db.commit()
+
+    return ResetAutomationOut(
+        automation_id=plan.id,
+        deleted_runs=deleted_runs,
+        deleted_run_steps=deleted_run_steps,
+        deleted_steps=deleted_steps,
+        cache_cleared=had_cache,
+    )
 

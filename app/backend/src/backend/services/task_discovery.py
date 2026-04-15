@@ -28,6 +28,25 @@ _BROWSER_TOKENS = {
 _KEYBOARD_MODIFIERS = {"<SHIFT>", "<CTRL>", "<ALT>", "<CMD>", "<META>", "<CAPS_LOCK>"}
 _TYPE_FAMILIES = {"TYPE_TEXT", "SUBMIT_TEXT"}
 
+# Contexts that are system/meta UI — never part of a real workflow.
+NOISE_CONTEXTS = {
+    "flowpilot", "search", "google chrome", "chrome",
+    "task manager", "desktop", "taskbar", "start menu", "start",
+    "file explorer", "settings", "microsoft store", "cortana",
+    "microsoft edge", "edge", "mozilla firefox", "firefox", "brave", "opera",
+    "run", "program manager", "windows security", "notification",
+    "action center", "quick settings", "unknown",
+}
+
+# Window title substrings that indicate system/meta windows.
+_NOISE_TITLE_FRAGMENTS = {
+    "flowpilot", "task manager", "file explorer", "settings",
+    "microsoft store", "cortana", "windows security",
+}
+
+# Max idle gap (seconds) between events in the same workflow segment.
+_SEGMENT_GAP_SECONDS = 45
+
 
 @dataclass(frozen=True)
 class Event:
@@ -157,8 +176,37 @@ def _string_similarity(left: str, right: str) -> float:
     return SequenceMatcher(a=left, b=right).ratio()
 
 
+def _is_noise_context(context: str) -> bool:
+    """Return True if the normalized context is a system/meta window, not a real app."""
+    if not context:
+        return True
+    lowered = context.lower().strip()
+    if lowered in NOISE_CONTEXTS:
+        return True
+    if any(frag in lowered for frag in _NOISE_TITLE_FRAGMENTS):
+        return True
+    # Bare browser names (the title normalizer strips pages to just the browser name
+    # when the tab is empty or loading).
+    if lowered in _BROWSER_TOKENS:
+        return True
+    return False
+
+
+def _is_noise_text(text: str) -> bool:
+    """Short launcher/search-bar fragments that aren't real workflow input."""
+    stripped = text.strip()
+    if not stripped:
+        return True
+    # <= 3 chars with no spaces → app-launcher search like "chr", "not"
+    if len(stripped) <= 3 and " " not in stripped:
+        return True
+    return False
+
+
 def _append_view_token(tokens: list[NormalizedToken], context: str, timestamp: datetime) -> None:
     if not context:
+        return
+    if _is_noise_context(context):
         return
     if tokens and tokens[-1].family == "VIEW" and tokens[-1].context == context:
         return
@@ -191,6 +239,7 @@ def _tokenize_events(events: Sequence[Event | ObservedLog]) -> list[NormalizedTo
     typed_started_at: datetime | None = None
     typed_last_at: datetime | None = None
     last_context = ""
+    last_event_ts: datetime | None = None
 
     def flush_text_buffer(*, submit: bool = False) -> None:
         nonlocal typed_chars, typed_context, typed_started_at, typed_last_at
@@ -202,7 +251,7 @@ def _tokenize_events(events: Sequence[Event | ObservedLog]) -> list[NormalizedTo
             return
 
         normalized_text = _normalize_free_text("".join(typed_chars), max_len=24)
-        if normalized_text:
+        if normalized_text and not _is_noise_text(normalized_text):
             family = "SUBMIT_TEXT" if submit else "TYPE_TEXT"
             _append_token(
                 tokens,
@@ -225,6 +274,32 @@ def _tokenize_events(events: Sequence[Event | ObservedLog]) -> list[NormalizedTo
         action = (event.action or "").strip()
         raw_text = (event.text or "").strip()
         context = _normalize_window_title(event.app)
+        is_noise_ctx = _is_noise_context(context)
+
+        # ── Time-gap segmentation: insert a break token if large idle gap ──
+        if last_event_ts is not None and (event.timestamp - last_event_ts) > timedelta(seconds=_SEGMENT_GAP_SECONDS):
+            flush_text_buffer()
+            tokens.append(
+                NormalizedToken(
+                    token="__GAP__",
+                    family="__GAP__",
+                    context="",
+                    value="",
+                    coord_bucket="",
+                    timestamp=event.timestamp,
+                )
+            )
+            last_context = ""
+
+        if action not in {"mouse_move", "screenshot"}:
+            last_event_ts = event.timestamp
+
+        # ── Skip events in noise windows entirely ──
+        if is_noise_ctx:
+            if action not in {"mouse_move", "screenshot"}:
+                flush_text_buffer()
+                last_context = context
+            continue
 
         if action not in {"mouse_move", "screenshot"} and context != last_context:
             flush_text_buffer()
@@ -289,7 +364,7 @@ def _tokenize_events(events: Sequence[Event | ObservedLog]) -> list[NormalizedTo
 
             flush_text_buffer()
             normalized_text = _normalize_free_text(char_value, max_len=24)
-            if normalized_text:
+            if normalized_text and not _is_noise_text(normalized_text):
                 _append_token(
                     tokens,
                     NormalizedToken(
@@ -405,6 +480,10 @@ def _sequence_similarity(pattern: Sequence[NormalizedToken], window: Sequence[No
 
 
 def _is_informative_pattern(pattern: Sequence[NormalizedToken]) -> bool:
+    # Patterns must never span a time gap.
+    if any(t.family == "__GAP__" for t in pattern):
+        return False
+
     if len(pattern) < 3:
         return False
     distinct_tokens = {token.token for token in pattern}
@@ -414,10 +493,10 @@ def _is_informative_pattern(pattern: Sequence[NormalizedToken]) -> bool:
     if len(non_view) < 2:
         return False
 
+    # All contexts must be real (non-noise).
+    real_contexts = {token.context for token in pattern if token.context and not _is_noise_context(token.context)}
     families = {token.family for token in non_view}
-    all_contexts = {token.context for token in pattern if token.context}
     has_text = bool(families & {"TYPE_TEXT", "SUBMIT_TEXT"})
-    has_key = "KEY" in families
     has_action = "ACTION" in families
     high_signal = has_text or has_action
 
@@ -425,17 +504,21 @@ def _is_informative_pattern(pattern: Sequence[NormalizedToken]) -> bool:
         distinct_click_targets = {token.token for token in non_view}
         if len(distinct_click_targets) < 3:
             return False
-        if len(all_contexts) < 2:
+        if len(real_contexts) < 2:
             return False
 
     if families <= {"CLICK", "KEY"} and not has_text and not has_action:
-        if len(all_contexts) < 2:
+        if len(real_contexts) < 2:
             return False
         distinct_values = {token.value for token in non_view}
         if len(distinct_values) < 2:
             return False
 
-    if not high_signal and len(all_contexts) < 2:
+    if not high_signal and len(real_contexts) < 2:
+        return False
+
+    # At least one real (non-noise) context required.
+    if len(real_contexts) == 0:
         return False
 
     return True
@@ -486,16 +569,22 @@ def _occurrence_overlap(left: PatternOccurrence, right: PatternOccurrence) -> in
     return max(0, end - start)
 
 
-def _extract_contexts(steps: list[str]) -> set[str]:
-    out: set[str] = set()
+def _real_contexts(steps: list[str]) -> set[str]:
+    """Extract contexts from steps, excluding known noise contexts."""
+    raw_contexts: set[str] = set()
     for s in steps:
         if s.startswith("VIEW:"):
-            out.add(s.split(":", 1)[1])
+            raw_contexts.add(s.split(":", 1)[1])
         elif s.startswith("CLICK:"):
             _, _, ctx = s.split(":", 1)[1].partition("@")
             if ctx:
-                out.add(ctx)
-    return out
+                raw_contexts.add(ctx)
+    return {c for c in raw_contexts if not _is_noise_context(c)}
+
+
+def _extract_contexts(steps: list[str]) -> set[str]:
+    """Extract real (non-noise) contexts from step strings."""
+    return _real_contexts(steps)
 
 
 def _patterns_are_similar(left: Pattern, right: Pattern) -> bool:
@@ -647,7 +736,32 @@ def detect_repeated_sequences(
             )
             exact_seen.add(signature)
 
-    found.sort(
+    # ── Trim noise tokens from pattern edges ──
+    trimmed: list[Pattern] = []
+    for pattern in found:
+        steps = pattern.steps
+        # Strip leading noise
+        while steps and (steps[0].startswith("VIEW:") and _is_noise_context(steps[0].split(":", 1)[1])):
+            steps = steps[1:]
+        # Strip trailing noise
+        while steps and (steps[-1].startswith("VIEW:") and _is_noise_context(steps[-1].split(":", 1)[1])):
+            steps = steps[:-1]
+        if len(steps) < min_pattern_steps:
+            continue
+        if steps != pattern.steps:
+            sig = _derive_signature(steps)
+            trimmed.append(Pattern(
+                signature=sig,
+                steps=steps,
+                repetitions=pattern.repetitions,
+                confidence=pattern.confidence,
+                occurrences=pattern.occurrences,
+                last_used=pattern.last_used,
+            ))
+        else:
+            trimmed.append(pattern)
+
+    trimmed.sort(
         key=lambda pattern: (
             -len(pattern.steps),
             -pattern.repetitions,
@@ -657,7 +771,7 @@ def detect_repeated_sequences(
     )
 
     deduplicated: list[Pattern] = []
-    for pattern in found:
+    for pattern in trimmed:
         if not _is_meaningful_task(pattern):
             continue
         if any(_patterns_are_similar(pattern, accepted) for accepted in deduplicated):
@@ -673,18 +787,17 @@ _NOISE_FAMILIES = {"CLICK", "VIEW"}
 
 
 def _is_meaningful_task(pattern: Pattern) -> bool:
-    """Reject patterns that look like aimless clicking / navigation noise.
-
-    A meaningful task must demonstrate purposeful, multi-step behaviour
-    across at least two distinct application contexts, or contain clear
-    text-input / submission actions that indicate intent.
-    """
+    """Reject patterns that look like aimless clicking / navigation noise."""
     steps = pattern.steps
     if len(steps) < 4:
         return False
 
+    # Reject patterns containing gap markers (shouldn't happen after early filter,
+    # but defensive).
+    if any(s == "__GAP__" for s in steps):
+        return False
+
     families: list[str] = []
-    contexts: set[str] = set()
     click_targets: set[str] = set()
     has_text = False
     has_action = False
@@ -692,14 +805,9 @@ def _is_meaningful_task(pattern: Pattern) -> bool:
     for step in steps:
         if step.startswith("VIEW:"):
             families.append("VIEW")
-            contexts.add(step.split(":", 1)[1])
         elif step.startswith("CLICK:"):
             families.append("CLICK")
-            body = step.split(":", 1)[1]
-            click_targets.add(body)
-            _, _, ctx = body.partition("@")
-            if ctx:
-                contexts.add(ctx)
+            click_targets.add(step.split(":", 1)[1])
         elif step.startswith("TYPE_TEXT:") or step.startswith("SUBMIT_TEXT:"):
             families.append("TEXT")
             has_text = True
@@ -712,39 +820,44 @@ def _is_meaningful_task(pattern: Pattern) -> bool:
             families.append("OTHER")
 
     family_set = set(families)
-    non_noise = [f for f in families if f not in _NOISE_FAMILIES]
+    non_noise_families = [f for f in families if f not in _NOISE_FAMILIES]
     total = len(families)
-    noise_ratio = (total - len(non_noise)) / max(1, total)
+    noise_ratio = (total - len(non_noise_families)) / max(1, total)
+    contexts = _real_contexts(steps)
 
-    # ── Rule 1: must involve at least 2 distinct window/app contexts ──
-    if len(contexts) < 2 and not has_text:
+    # ── Rule 1: must involve at least 1 real (non-noise) context ──
+    if len(contexts) == 0:
         return False
 
-    # ── Rule 2: pure click+view patterns need heavy diversity ──
+    # ── Rule 2: need 2+ real contexts OR text/action intent ──
+    if len(contexts) < 2 and not has_text and not has_action:
+        return False
+
+    # ── Rule 3: pure click+view patterns need heavy diversity ──
     if family_set <= _NOISE_FAMILIES:
         if len(click_targets) < 3 or len(contexts) < 2:
             return False
 
-    # ── Rule 3: click+key only (no text, no action) is noise unless multi-context ──
+    # ── Rule 4: click+key only (no text, no action) needs multi-context ──
     if family_set <= {"CLICK", "VIEW", "KEY"} and not has_text and not has_action:
         if len(contexts) < 2:
             return False
         if len(click_targets) < 2:
             return False
 
-    # ── Rule 4: reject high noise-ratio without text intent ──
+    # ── Rule 5: reject high noise-ratio without text intent ──
     if noise_ratio > 0.80 and not has_text:
         return False
 
-    # ── Rule 5: if zero high-signal steps, need many diverse targets ──
-    if len(non_noise) == 0 and len(click_targets) < 4:
+    # ── Rule 6: if zero high-signal family steps, need many diverse targets ──
+    if len(non_noise_families) == 0 and len(click_targets) < 4:
         return False
 
-    # ── Rule 6: confidence floor ──
+    # ── Rule 7: confidence floor ──
     if pattern.confidence < 0.40:
         return False
 
-    # ── Rule 7: pattern must have repetitions > 1 (redundant guard) ──
+    # ── Rule 8: pattern must have repetitions > 1 ──
     if pattern.repetitions < 2:
         return False
 
@@ -1011,20 +1124,21 @@ def _steps_look_meaningful(step_strs: list[str]) -> bool:
     """Quick check on persisted steps to filter out previously-saved noise."""
     if len(step_strs) < 4:
         return False
+
+    # Skip any steps that are pure gap markers.
+    step_strs = [s for s in step_strs if s != "__GAP__"]
+    if len(step_strs) < 4:
+        return False
+
     families: set[str] = set()
-    contexts: set[str] = set()
     click_targets: set[str] = set()
     has_text = False
     for s in step_strs:
         if s.startswith("VIEW:"):
             families.add("VIEW")
-            contexts.add(s.split(":", 1)[1])
         elif s.startswith("CLICK:"):
             families.add("CLICK")
             click_targets.add(s.split(":", 1)[1])
-            _, _, ctx = s.split(":", 1)[1].partition("@")
-            if ctx:
-                contexts.add(ctx)
         elif s.startswith("TYPE_TEXT:") or s.startswith("SUBMIT_TEXT:"):
             families.add("TEXT")
             has_text = True
@@ -1033,6 +1147,10 @@ def _steps_look_meaningful(step_strs: list[str]) -> bool:
         elif s.startswith("ACTION:"):
             families.add("ACTION")
 
+    contexts = _real_contexts(step_strs)
+
+    if len(contexts) == 0:
+        return False
     if len(contexts) < 2 and not has_text:
         return False
     if families <= {"CLICK", "VIEW"}:

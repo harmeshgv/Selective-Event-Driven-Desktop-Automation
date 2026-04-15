@@ -83,6 +83,15 @@ YOUR JOB: Understand their goal and create a SIMPLE automation using subprocess 
 - Keep it to 3-4 steps max. Fewer steps = more reliable.
 - Focus on the user's MAIN GOAL, ignore noise actions (random clicks, mouse moves, screenshots).
 
+=== URL ACCURACY (VERY IMPORTANT) ===
+
+- The raw actions only contain PAGE TITLES, not URLs. You must determine the correct URL.
+- If "browser_tab_titles" are provided, use them to identify the real website domain.
+- For WELL-KNOWN sites (LinkedIn, YouTube, Google, GitHub, Wikipedia, etc.) construct the URL directly.
+- If you are UNSURE of the exact URL, use Google Search as a SAFE FALLBACK:
+  target: https://www.google.com/search?q=encoded+search+terms
+- NEVER invent or guess a URL that could 404. When in doubt, use Google Search.
+
 === EXAMPLE ===
 
 Raw actions: VIEW:LinkedIn, CLICK:search, TYPE_TEXT:machine learning intern, KEY:<ENTER>
@@ -175,8 +184,9 @@ def _llm_config() -> tuple[str, str, str]:
     return endpoint, api_key, model
 
 
-_LLM_MAX_RETRIES = 3
-_LLM_BACKOFF_BASE = 2.0
+_LLM_MAX_RETRIES = 6
+_LLM_BACKOFF_BASE = 3.0
+_LLM_MAX_WAIT = 60.0
 
 
 def _call_llm(*, system: str, user: str, temperature: float = 0.2) -> str:
@@ -212,7 +222,7 @@ def _call_llm(*, system: str, user: str, temperature: float = 0.2) -> str:
             method="POST",
         )
         try:
-            with request.urlopen(req, timeout=30) as resp:
+            with request.urlopen(req, timeout=60) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
             choices = data.get("choices") or []
             if not choices:
@@ -229,12 +239,31 @@ def _call_llm(*, system: str, user: str, temperature: float = 0.2) -> str:
             detail = exc.read().decode("utf-8", errors="replace")
             _LOGGER.warning("LLM HTTP %s (attempt %d/%d): %s", code, attempt, _LLM_MAX_RETRIES, detail[:200])
             if code == 429 and attempt < _LLM_MAX_RETRIES:
-                wait = _LLM_BACKOFF_BASE ** attempt
-                _LOGGER.info("Rate limited, waiting %.1fs before retry", wait)
+                # Respect Retry-After header if present, otherwise exponential backoff.
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
+                if retry_after:
+                    try:
+                        wait = min(float(retry_after) + 1.0, _LLM_MAX_WAIT)
+                    except (ValueError, TypeError):
+                        wait = min(_LLM_BACKOFF_BASE ** attempt, _LLM_MAX_WAIT)
+                else:
+                    wait = min(_LLM_BACKOFF_BASE ** attempt, _LLM_MAX_WAIT)
+                _LOGGER.info("Rate limited, waiting %.1fs before retry %d/%d", wait, attempt + 1, _LLM_MAX_RETRIES)
+                _time.sleep(wait)
+                continue
+            if code in (500, 502, 503) and attempt < _LLM_MAX_RETRIES:
+                wait = min(_LLM_BACKOFF_BASE ** attempt, _LLM_MAX_WAIT)
+                _LOGGER.info("Server error %d, waiting %.1fs before retry", code, wait)
                 _time.sleep(wait)
                 continue
             raise RuntimeError(f"LLM request failed ({code})") from exc
         except error.URLError as exc:
+            last_exc = exc
+            if attempt < _LLM_MAX_RETRIES:
+                wait = min(_LLM_BACKOFF_BASE ** attempt, _LLM_MAX_WAIT)
+                _LOGGER.info("Connection error, waiting %.1fs before retry: %s", wait, exc.reason)
+                _time.sleep(wait)
+                continue
             raise RuntimeError(f"LLM request failed: {exc.reason}") from exc
 
     raise RuntimeError(f"LLM request failed after {_LLM_MAX_RETRIES} retries") from last_exc
@@ -284,18 +313,28 @@ def _sanitize_steps(steps: list[dict]) -> list[dict]:
 
 # ---------------------------------------------------------------------------
 # Noise filtering — remove app-switching, launcher, and FlowPilot actions
+# Uses the shared NOISE_CONTEXTS set from task_discovery for consistency.
 # ---------------------------------------------------------------------------
 
-_NOISE_VIEWS = {
-    "flowpilot", "search", "google chrome", "task manager",
-    "desktop", "taskbar", "start menu", "start", "file explorer",
-    "settings", "microsoft store",
-}
-
-_NOISE_PREFIXES = ("MOVE", "SCREENSHOT", "screenshot", "mouse_move")
+_NOISE_PREFIXES = ("MOVE", "SCREENSHOT", "screenshot", "mouse_move", "__GAP__")
 
 
-def _is_noise_action(action: str, dominant_context: str) -> bool:
+def _get_noise_contexts() -> set[str]:
+    """Import the canonical noise set from task_discovery."""
+    try:
+        from backend.services.task_discovery import NOISE_CONTEXTS
+        return NOISE_CONTEXTS
+    except ImportError:
+        return {
+            "flowpilot", "search", "google chrome", "chrome",
+            "task manager", "desktop", "taskbar", "start menu", "start",
+            "file explorer", "settings", "microsoft store", "cortana",
+            "microsoft edge", "edge", "mozilla firefox", "firefox",
+            "brave", "opera", "run", "program manager", "unknown",
+        }
+
+
+def _is_noise_action(action: str) -> bool:
     lowered = action.lower().strip()
 
     if any(lowered.startswith(p.lower()) for p in _NOISE_PREFIXES):
@@ -304,30 +343,38 @@ def _is_noise_action(action: str, dominant_context: str) -> bool:
     kind, _, payload = action.partition(":")
     kind_up = kind.strip().upper()
     payload_clean = payload.strip().lower()
+    noise_set = _get_noise_contexts()
 
-    if kind_up == "VIEW" and payload_clean in _NOISE_VIEWS:
+    if kind_up == "VIEW" and payload_clean in noise_set:
         return True
 
-    # Short app-launcher searches like "chr", "not", "exc" — clearly not part of the workflow
-    if kind_up in ("SUBMIT_TEXT", "TYPE_TEXT") and len(payload.strip()) <= 4 and " " not in payload.strip():
+    # Short app-launcher searches like "chr", "not", "exc"
+    if kind_up in ("SUBMIT_TEXT", "TYPE_TEXT") and len(payload.strip()) <= 3 and " " not in payload.strip():
         return True
 
-    # Clicks/views on FlowPilot itself
-    if "flowpilot" in payload_clean:
+    # Clicks/views on FlowPilot itself or other meta apps
+    if any(frag in payload_clean for frag in ("flowpilot", "task manager", "cortana")):
         return True
+
+    # Click in a noise context (e.g. CLICK:left@search)
+    if kind_up == "CLICK" and "@" in payload_clean:
+        _, _, ctx = payload_clean.partition("@")
+        if ctx.strip() in noise_set:
+            return True
 
     return False
 
 
 def _find_dominant_context(actions: list[str]) -> str:
     """Find the most frequent VIEW context — that's the main app/site."""
+    noise_set = _get_noise_contexts()
     counts: dict[str, int] = {}
     for action in actions:
         kind, _, payload = action.partition(":")
         if kind.strip().upper() != "VIEW":
             continue
         ctx = payload.strip().lower()
-        if ctx and ctx not in _NOISE_VIEWS:
+        if ctx and ctx not in noise_set:
             counts[ctx] = counts.get(ctx, 0) + 1
     if not counts:
         return ""
@@ -339,20 +386,16 @@ def _filter_noise(actions: list[str]) -> list[str]:
     if not actions:
         return actions
 
-    dominant = _find_dominant_context(actions)
+    cleaned = [a for a in actions if not _is_noise_action(a)]
 
-    # First pass: mark each action as signal or noise
-    cleaned = []
-    trailing_noise_count = 0
-    for action in actions:
-        if _is_noise_action(action, dominant):
-            trailing_noise_count += 1
-            continue
-        # If we had noise, and now we're back to signal, reset counter
-        trailing_noise_count = 0
-        cleaned.append(action)
+    # Strip trailing noise (e.g. switching back to launcher at the end)
+    while cleaned and cleaned[-1].startswith("VIEW:"):
+        ctx = cleaned[-1].split(":", 1)[1].strip().lower()
+        if ctx in _get_noise_contexts():
+            cleaned.pop()
+        else:
+            break
 
-    # If we removed everything, keep originals (better than nothing)
     if not cleaned:
         return actions
 
@@ -374,13 +417,32 @@ class TaskContext:
     raw_actions: list[str]
     frequency: int
     signature: str = ""
+    raw_window_titles: list[str] | None = None
+
+
+def _extract_url_hints(raw_titles: list[str]) -> list[str]:
+    """Try to extract domain/URL hints from raw browser window titles."""
+    import re as _re
+    hints: list[str] = []
+    seen: set[str] = set()
+    for title in raw_titles:
+        lowered = title.lower()
+        # Skip non-browser windows
+        is_browser = any(b in lowered for b in ("chrome", "firefox", "edge", "brave", "opera"))
+        if not is_browser:
+            continue
+        # Strip browser name suffix
+        cleaned = _re.sub(r"\s*[-–—]\s*(google\s+chrome|mozilla\s+firefox|microsoft\s+edge|brave|opera)\s*$", "", title, flags=_re.IGNORECASE).strip()
+        if cleaned and cleaned.lower() not in seen:
+            seen.add(cleaned.lower())
+            hints.append(cleaned)
+    return hints
 
 
 def _build_task_prompt(ctx: TaskContext) -> str:
-    # Filter noise BEFORE sending to LLM
     clean_actions = _filter_noise(ctx.raw_actions)
 
-    full_json = json.dumps({
+    prompt_data: dict = {
         "task_name": ctx.task_name,
         "times_repeated": ctx.frequency,
         "total_raw_actions": len(ctx.raw_actions),
@@ -388,21 +450,56 @@ def _build_task_prompt(ctx: TaskContext) -> str:
             {"step": i + 1, "action": a}
             for i, a in enumerate(clean_actions)
         ],
-    }, indent=2, ensure_ascii=True)
+    }
 
-    return (
-        f"Here is the task data (noise-filtered) as JSON:\n\n{full_json}\n\n"
-        f"ACTION FORMAT GUIDE:\n"
-        f"- VIEW:page title = user viewed/navigated to a page\n"
-        f"- CLICK:target@context = user clicked something\n"
-        f"- TYPE_TEXT:text = user typed text\n"
-        f"- SUBMIT_TEXT:text = user submitted text (search, form)\n"
-        f"- KEY:<KEYNAME> = user pressed a key\n"
-        f"- ACTION:name@context = user performed an action\n\n"
-        f"Understand the user's GOAL from these actions and create a simple automation.\n"
-        f"ONLY use: chrome_profile_picker, chrome_open_url, open_url, wait, run_command, type, key_press, hotkey.\n"
-        f"DO NOT use playwright actions. Build URLs directly with search queries encoded in them."
+    url_hints: list[str] = []
+    if ctx.raw_window_titles:
+        url_hints = _extract_url_hints(ctx.raw_window_titles)
+        if url_hints:
+            prompt_data["browser_tab_titles"] = url_hints
+
+    full_json = json.dumps(prompt_data, indent=2, ensure_ascii=True)
+
+    parts = [
+        f"Here is the task data (noise-filtered) as JSON:\n\n{full_json}\n\n",
+        "ACTION FORMAT GUIDE:\n"
+        "- VIEW:page title = user viewed/navigated to a page\n"
+        "- CLICK:target@context = user clicked something\n"
+        "- TYPE_TEXT:text = user typed text\n"
+        "- SUBMIT_TEXT:text = user submitted text (search, form)\n"
+        "- KEY:<KEYNAME> = user pressed a key\n"
+        "- ACTION:name@context = user performed an action\n\n",
+    ]
+
+    if url_hints:
+        parts.append(
+            "BROWSER TAB TITLES (raw, from the user's actual browser):\n"
+            "These show the REAL pages the user visited. Use them to figure out correct URLs.\n"
+            + "\n".join(f"  - {h}" for h in url_hints)
+            + "\n\n"
+        )
+
+    parts.append(
+        "URL RULES (CRITICAL):\n"
+        "- The actions only show page TITLES, not URLs. You MUST figure out the correct URL.\n"
+        "- Look at the browser_tab_titles for clues about the real website domain.\n"
+        "- For KNOWN sites (LinkedIn, YouTube, Google, GitHub, etc.), construct the correct URL.\n"
+        "- If you are NOT SURE of the exact URL, use Google Search as a safe fallback:\n"
+        "  chrome_open_url with target: https://www.google.com/search?q=encoded+page+title\n"
+        "- NEVER guess a URL that might 404. When in doubt, Google it.\n"
+        "- Examples:\n"
+        "  'scikit learn getting started' → https://www.google.com/search?q=scikit-learn+getting+started\n"
+        "  'linkedin jobs machine learning' → https://www.linkedin.com/jobs/search/?keywords=Machine%20Learning\n"
+        "  'youtube python tutorial' → https://www.youtube.com/results?search_query=python+tutorial\n\n"
     )
+
+    parts.append(
+        "Understand the user's GOAL from these actions and create a simple automation.\n"
+        "ONLY use: chrome_profile_picker, chrome_open_url, open_url, wait, run_command, type, key_press, hotkey.\n"
+        "DO NOT use playwright actions. Build URLs directly with search queries encoded in them."
+    )
+
+    return "".join(parts)
 
 
 def generate_automation_from_task(ctx: TaskContext) -> tuple[str, list[dict]]:

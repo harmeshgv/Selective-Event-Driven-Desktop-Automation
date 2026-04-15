@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.api.routes.logs import get_db
-from backend.db.models import AutomationPlan, AutomationRun, AutomationRunStep, AutomationStep, TaskPattern, TaskStep
+from backend.db.models import AutomationPlan, AutomationRun, AutomationRunStep, AutomationStep, ObservedLog, TaskPattern, TaskStep
 
 router = APIRouter()
 _log = logging.getLogger("run")
@@ -216,6 +216,26 @@ def run_smart(payload: SmartRunIn, db: Session = Depends(get_db)):
     if not raw_actions:
         raise HTTPException(status_code=400, detail="No raw task actions found — nothing for AI to work with")
 
+    # Pull raw browser window titles from ObservedLog for URL hints.
+    # Query recent logs around the task's last_used timestamp.
+    from datetime import timedelta
+    raw_window_titles: list[str] = []
+    if task.last_used:
+        window_start = task.last_used - timedelta(hours=2)
+        window_end = task.last_used + timedelta(minutes=5)
+        browser_logs = (
+            db.query(ObservedLog.app)
+            .filter(
+                ObservedLog.timestamp.between(window_start, window_end),
+                ObservedLog.app.isnot(None),
+                ObservedLog.app != "",
+            )
+            .distinct()
+            .limit(50)
+            .all()
+        )
+        raw_window_titles = list({row.app for row in browser_logs if row.app})
+
     run = AutomationRun(
         plan_id=plan.id,
         status="running",
@@ -244,6 +264,7 @@ def run_smart(payload: SmartRunIn, db: Session = Depends(get_db)):
     task_name = task.name or plan.name
     task_frequency = task.frequency
     task_signature = task.signature
+    raw_titles = raw_window_titles
 
     def stream():
         from ai.llm_executor import ExecutionDoneEvent, ExecutionStepEvent, TaskContext, execute_with_llm, execute_cached_steps
@@ -268,6 +289,7 @@ def run_smart(payload: SmartRunIn, db: Session = Depends(get_db)):
                 raw_actions=raw_actions,
                 frequency=task_frequency,
                 signature=task_signature,
+                raw_window_titles=raw_titles,
             )
             yield _sse_event("start", {
                 "run_id": run_id,

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import {
   getAutomation,
   type AutomationStepOut,
+  resetAutomation,
   runAutomation,
   runSmartAutomation,
   updateAutomationSteps,
@@ -53,6 +54,7 @@ export default function AutomationDetail() {
   const [liveSteps, setLiveSteps] = useState<SmartRunStepEvent[]>([]);
   const [smartDone, setSmartDone] = useState<SmartRunDoneEvent | null>(null);
   const [smartRunning, setSmartRunning] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const liveLogRef = useRef<HTMLDivElement>(null);
 
   function buildLocalPreview(steps: AutomationStepOut[]): RunAutomationOut {
@@ -213,6 +215,27 @@ export default function AutomationDetail() {
     }
   }
 
+  async function onReset() {
+    if (!automation) return;
+    if (!window.confirm("Reset this automation?\n\nThis will clear the cached AI plan, delete all run history, and regenerate steps from scratch.")) return;
+    setResetting(true);
+    setError("");
+    setLiveSteps([]);
+    setSmartDone(null);
+    try {
+      await resetAutomation(id);
+      const found = await getAutomation(id);
+      setAutomation(found);
+      setEditedSteps(found.steps);
+      setApproved(false);
+      setPreview(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setResetting(false);
+    }
+  }
+
   const risk = preview?.risk_level ?? automation?.risk_level ?? "unknown";
   const isRunning = running || smartRunning;
 
@@ -279,6 +302,23 @@ export default function AutomationDetail() {
             : smartMode
               ? "AI Execute"
               : "Execute Automation"}
+        </button>
+        <button
+          onClick={onReset}
+          disabled={isRunning || resetting}
+          style={{
+            padding: "8px 16px",
+            borderRadius: 8,
+            border: "1px solid var(--danger, #e74c3c)",
+            background: "transparent",
+            color: "var(--danger, #e74c3c)",
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: isRunning || resetting ? "not-allowed" : "pointer",
+            opacity: isRunning || resetting ? 0.5 : 1,
+          }}
+        >
+          {resetting ? "Resetting..." : "Reset All"}
         </button>
       </div>
 

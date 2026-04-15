@@ -253,6 +253,18 @@ export function createAutomation(taskId: number): Promise<AutomationPlanOut> {
   return postJSON<{ task_id: number }, AutomationPlanOut>("/automations", { task_id: taskId });
 }
 
+export type ResetAutomationOut = {
+  automation_id: number;
+  deleted_runs: number;
+  deleted_run_steps: number;
+  deleted_steps: number;
+  cache_cleared: boolean;
+};
+
+export function resetAutomation(automationId: number): Promise<ResetAutomationOut> {
+  return postJSON<Record<string, never>, ResetAutomationOut>(`/automations/${automationId}/reset`, {});
+}
+
 // ---------------------------------------------------------------------------
 // Smart (LLM-powered) execution with SSE streaming
 // ---------------------------------------------------------------------------

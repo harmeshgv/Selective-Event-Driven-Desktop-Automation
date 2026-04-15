@@ -314,9 +314,6 @@ export default function Dashboard() {
                   <button className="btn-sm" onClick={() => onGenerateAutomation(t)}>
                     ⚡ Automate
                   </button>
-                  <Link to="/timeline" style={{ fontSize: 12, padding: "5px 10px" }}>
-                    View activity →
-                  </Link>
                 </div>
               </div>
             ))}

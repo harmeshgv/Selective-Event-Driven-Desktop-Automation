@@ -29,49 +29,40 @@ def seed_sample_automation(db: Session) -> None:
 
     plan = AutomationPlan(
         task_id=task.id,
-        name="Sample: DuckDuckGo search + click",
-        risk_level="medium",
+        name="Sample: DuckDuckGo search",
+        risk_level="low",
         plan_text="{}",
         created_at=now,
     )
     db.add(plan)
     db.flush()
 
-    search_query = "flowpilot desktop assistant"
+    search_query = "flowpilot+desktop+assistant"
     steps = [
         AutomationStep(
             plan_id=plan.id,
             step_order=1,
-            description="Open DuckDuckGo in the browser.",
-            action_type="playwright_navigate",
-            target="https://duckduckgo.com/",
+            description="Open Chrome profile picker so user can choose their account.",
+            action_type="chrome_profile_picker",
+            target="",
             value="",
-            retry_count=2,
+            retry_count=1,
         ),
         AutomationStep(
             plan_id=plan.id,
             step_order=2,
-            description="Type the search query.",
-            action_type="playwright_fill",
-            target="input[name=q]",
-            value=search_query,
-            retry_count=2,
+            description="Wait for user to pick their Chrome profile.",
+            action_type="wait",
+            target="",
+            value="5",
+            retry_count=1,
         ),
         AutomationStep(
             plan_id=plan.id,
             step_order=3,
-            description="Press Enter to run the search.",
-            action_type="playwright_press",
-            target="input[name=q]",
-            value="Enter",
-            retry_count=2,
-        ),
-        AutomationStep(
-            plan_id=plan.id,
-            step_order=4,
-            description="Click the first visible search result.",
-            action_type="playwright_click_first_result",
-            target="a.result__a, a[data-testid='result-title-a'], h2 a",
+            description="Open DuckDuckGo search for 'flowpilot desktop assistant'.",
+            action_type="chrome_open_url",
+            target=f"https://duckduckgo.com/?q={search_query}",
             value="",
             retry_count=2,
         ),

@@ -1,0 +1,34 @@
+appId: com.flowpilot.desktop
+productName: FlowPilot
+copyright: Copyright © 2026 FlowPilot
+
+directories:
+  output: installer-output
+  buildResources: build
+
+files:
+  - dist/**/*
+  - electron/**/*
+  - "!node_modules/**/*"
+
+extraResources:
+  - from: backend-dist/flowpilot-backend
+    to: backend-dist/flowpilot-backend
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: FlowPilot
+
+asar: true

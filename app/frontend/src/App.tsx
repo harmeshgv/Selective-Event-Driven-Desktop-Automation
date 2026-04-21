@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import Timeline from "./pages/Timeline";
 import AutomationDetail from "./pages/AutomationDetail";
 import Settings from "./pages/Settings";
+import { getObserverSettings, type ObserverSettingsOut } from "./api";
 
 type Theme = "light" | "dark";
 
@@ -25,11 +26,24 @@ export default function App() {
     if (stored === "light" || stored === "dark") return stored;
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   });
+  const [observerStatus, setObserverStatus] = useState<ObserverSettingsOut | null>(null);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     window.localStorage.setItem("flowpilot.theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = () => {
+      getObserverSettings()
+        .then((s) => { if (!cancelled) setObserverStatus(s); })
+        .catch(() => {});
+    };
+    poll();
+    const id = window.setInterval(poll, 5000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, []);
 
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
@@ -67,8 +81,20 @@ export default function App() {
       <div className="content-area">
         <header className="topbar">
           <span className="discover-badge" style={{ marginRight: "auto" }}>
-            <div className="discover-dot"></div>
-            Observer Active
+            <div
+              className="discover-dot"
+              style={{
+                background: observerStatus?.tracking_enabled ? "var(--accent)" : "var(--text-tertiary)",
+                boxShadow: observerStatus?.tracking_enabled ? "0 0 4px var(--accent)" : "none",
+              }}
+            />
+            {observerStatus == null
+              ? "Connecting..."
+              : observerStatus.tracking_enabled
+                ? observerStatus.privacy_mode
+                  ? "Privacy Mode"
+                  : "Recording"
+                : "Paused"}
           </span>
           <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
             <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--bg-inset)", color: "var(--text-secondary)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold", fontSize: 11, border: "1px solid var(--border)" }}>U</div>

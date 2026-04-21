@@ -203,7 +203,30 @@ def _load_dotenv_fallback() -> dict[str, str]:
     return env
 
 
+_DB_CONFIG: dict[str, str] | None = None
+
+
+def _load_db_config() -> dict[str, str]:
+    """Try to read user config from the database (best-effort)."""
+    try:
+        from backend.db.session import SessionLocal
+        from backend.api.routes.user_config import get_user_config_dict
+        db = SessionLocal()
+        try:
+            return get_user_config_dict(db)
+        finally:
+            db.close()
+    except Exception:
+        return {}
+
+
 def _get_env(name: str, default: str = "") -> str:
+    global _DB_CONFIG
+    if _DB_CONFIG is None:
+        _DB_CONFIG = _load_db_config()
+    db_val = _DB_CONFIG.get(name, "").strip()
+    if db_val:
+        return db_val
     value = os.getenv(name, "").strip()
     if value:
         return value

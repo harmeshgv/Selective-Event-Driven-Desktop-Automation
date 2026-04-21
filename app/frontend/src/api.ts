@@ -102,8 +102,19 @@ export type ObserverResetOut = {
   deleted_screenshots: number;
 };
 
+declare global {
+  interface Window {
+    flowpilotDesktop?: { platform: string; electron: boolean };
+  }
+}
+
+const API_BASE =
+  typeof window !== "undefined" && window.flowpilotDesktop?.electron
+    ? "http://127.0.0.1:8000"
+    : "";
+
 async function getJSON<T>(path: string): Promise<T> {
-  const resp = await fetch(path, { method: "GET", cache: "no-store" });
+  const resp = await fetch(`${API_BASE}${path}`, { method: "GET", cache: "no-store" });
   if (!resp.ok) {
     const text = await resp.text();
     throw new Error(`GET ${path} failed: ${resp.status} ${text}`);
@@ -112,7 +123,7 @@ async function getJSON<T>(path: string): Promise<T> {
 }
 
 async function postJSON<TReq, TResp>(path: string, body: TReq): Promise<TResp> {
-  const resp = await fetch(path, {
+  const resp = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -125,7 +136,7 @@ async function postJSON<TReq, TResp>(path: string, body: TReq): Promise<TResp> {
 }
 
 async function putJSON<TReq, TResp>(path: string, body: TReq): Promise<TResp> {
-  const resp = await fetch(path, {
+  const resp = await fetch(`${API_BASE}${path}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -138,7 +149,7 @@ async function putJSON<TReq, TResp>(path: string, body: TReq): Promise<TResp> {
 }
 
 async function deleteJSON<TReq, TResp>(path: string, body: TReq): Promise<TResp> {
-  const resp = await fetch(path, {
+  const resp = await fetch(`${API_BASE}${path}`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -266,6 +277,32 @@ export function resetAutomation(automationId: number): Promise<ResetAutomationOu
 }
 
 // ---------------------------------------------------------------------------
+// User Config (per-user API keys and paths)
+// ---------------------------------------------------------------------------
+
+export type UserConfigOut = {
+  task_explainer_api_key: string;
+  task_explainer_api_key_set: boolean;
+  automation_llm_api_key: string;
+  automation_llm_api_key_set: boolean;
+  chrome_path: string;
+};
+
+export type UserConfigIn = {
+  task_explainer_api_key: string | null;
+  automation_llm_api_key: string | null;
+  chrome_path: string;
+};
+
+export function getUserConfig(): Promise<UserConfigOut> {
+  return getJSON<UserConfigOut>("/settings/config");
+}
+
+export function updateUserConfig(input: UserConfigIn): Promise<UserConfigOut> {
+  return putJSON<UserConfigIn, UserConfigOut>("/settings/config", input);
+}
+
+// ---------------------------------------------------------------------------
 // Smart (LLM-powered) execution with SSE streaming
 // ---------------------------------------------------------------------------
 
@@ -307,7 +344,7 @@ export async function runSmartAutomation(
   automationId: number,
   callbacks: SmartRunCallbacks,
 ): Promise<void> {
-  const resp = await fetch("/run/smart", {
+  const resp = await fetch(`${API_BASE}/run/smart`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ automation_id: automationId, approved: true }),

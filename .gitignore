@@ -26,6 +26,10 @@ __pycache__/
 .venv/
 venv/
 
+# PyInstaller / electron-builder output
+backend-dist/
+installer-output/
+
 # Local databases and runtime output
 *.db
 *.db-shm

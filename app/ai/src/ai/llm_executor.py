@@ -165,13 +165,36 @@ def _dotenv_cache() -> dict[str, str]:
 
 
 _ENV: dict[str, str] | None = None
+_DB_CONFIG: dict[str, str] | None = None
+
+
+def _load_db_config() -> dict[str, str]:
+    """Try to read user config from the database (best-effort)."""
+    try:
+        from backend.db.session import SessionLocal
+        from backend.api.routes.user_config import get_user_config_dict
+        db = SessionLocal()
+        try:
+            return get_user_config_dict(db)
+        finally:
+            db.close()
+    except Exception:
+        return {}
 
 
 def _env(name: str, default: str = "") -> str:
-    global _ENV
+    global _ENV, _DB_CONFIG
+    # 1. DB config (set via Settings UI) takes priority
+    if _DB_CONFIG is None:
+        _DB_CONFIG = _load_db_config()
+    db_val = _DB_CONFIG.get(name, "").strip()
+    if db_val:
+        return db_val
+    # 2. OS environment variable
     val = os.getenv(name, "").strip()
     if val:
         return val
+    # 3. .env file fallback
     if _ENV is None:
         _ENV = _dotenv_cache()
     return _ENV.get(name, default).strip()

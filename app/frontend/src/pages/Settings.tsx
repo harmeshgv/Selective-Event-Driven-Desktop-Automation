@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import type { ObserverSettingsOut } from "../api";
-import { clearLogs, getObserverSettings, resetObserverWorkspace, updateObserverSettings } from "../api";
+import type { ObserverSettingsOut, UserConfigOut } from "../api";
+import { clearLogs, getObserverSettings, getUserConfig, resetObserverWorkspace, updateObserverSettings, updateUserConfig } from "../api";
 
 function summarizeCollection(s: ObserverSettingsOut) {
   const items: string[] = [];
@@ -12,6 +12,20 @@ function summarizeCollection(s: ObserverSettingsOut) {
   return items;
 }
 
+type ConfigDraft = {
+  task_explainer_api_key: string;
+  automation_llm_api_key: string;
+  chrome_path: string;
+};
+
+function configFromServer(s: UserConfigOut): ConfigDraft {
+  return {
+    task_explainer_api_key: s.task_explainer_api_key,
+    automation_llm_api_key: s.automation_llm_api_key,
+    chrome_path: s.chrome_path,
+  };
+}
+
 export default function Settings() {
   const [original, setOriginal] = useState<ObserverSettingsOut | null>(null);
   const [draft, setDraft] = useState<ObserverSettingsOut | null>(null);
@@ -19,6 +33,15 @@ export default function Settings() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
+
+  // API Keys / Config state
+  const [cfgOriginal, setCfgOriginal] = useState<UserConfigOut | null>(null);
+  const [cfgDraft, setCfgDraft] = useState<ConfigDraft | null>(null);
+  const [cfgSaving, setCfgSaving] = useState(false);
+  const [cfgNotice, setCfgNotice] = useState("");
+  const [cfgError, setCfgError] = useState("");
+  const [showExplainerKey, setShowExplainerKey] = useState(false);
+  const [showAutomationKey, setShowAutomationKey] = useState(false);
 
   const dirty =
     !!original &&
@@ -45,9 +68,11 @@ export default function Settings() {
     setError("");
     setNotice("");
     try {
-      const s = await getObserverSettings();
+      const [s, cfg] = await Promise.all([getObserverSettings(), getUserConfig()]);
       setOriginal(s);
       setDraft({ ...s });
+      setCfgOriginal(cfg);
+      setCfgDraft(configFromServer(cfg));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -56,6 +81,36 @@ export default function Settings() {
   }
 
   useEffect(() => { load(); }, []);
+
+  const cfgDirty =
+    !!cfgOriginal &&
+    !!cfgDraft &&
+    (cfgDraft.task_explainer_api_key !== cfgOriginal.task_explainer_api_key ||
+      cfgDraft.automation_llm_api_key !== cfgOriginal.automation_llm_api_key ||
+      cfgDraft.chrome_path !== cfgOriginal.chrome_path);
+
+  async function onSaveConfig() {
+    if (!cfgDraft) return;
+    setCfgSaving(true);
+    setCfgError("");
+    setCfgNotice("");
+    try {
+      const updated = await updateUserConfig({
+        task_explainer_api_key: cfgDraft.task_explainer_api_key,
+        automation_llm_api_key: cfgDraft.automation_llm_api_key,
+        chrome_path: cfgDraft.chrome_path,
+      });
+      setCfgOriginal(updated);
+      setCfgDraft(configFromServer(updated));
+      setShowExplainerKey(false);
+      setShowAutomationKey(false);
+      setCfgNotice("Configuration saved successfully.");
+    } catch (e) {
+      setCfgError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCfgSaving(false);
+    }
+  }
 
   const summary = draft ? summarizeCollection(draft) : [];
 
@@ -131,11 +186,100 @@ export default function Settings() {
     <div>
       <div className="page-header">
         <h1>Settings</h1>
-        <p>Control recording behavior, privacy, and data management.</p>
+        <p>Configure API keys, recording behavior, privacy, and data management.</p>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
       {notice && <div className="notice-banner">{notice}</div>}
+
+      {/* Your API Keys */}
+      {cfgDraft && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3 className="section-title" style={{ marginBottom: 4 }}>Your API Keys</h3>
+          <p style={{ fontSize: 13, color: "var(--text-tertiary)", margin: "0 0 16px" }}>
+            Provide your own API keys to enable AI features. Keys are stored locally and never shared.
+          </p>
+
+          {cfgError && <div className="error-banner" style={{ marginBottom: 12 }}>{cfgError}</div>}
+          {cfgNotice && <div className="notice-banner" style={{ marginBottom: 12 }}>{cfgNotice}</div>}
+
+          <div className="toggle-row">
+            <div className="toggle-label">
+              <span>LLM API Key</span>
+              <span>{cfgOriginal?.task_explainer_api_key_set ? "Key is set" : "Required for AI task explanations and automations"}</span>
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type={showExplainerKey ? "text" : "password"}
+                placeholder={cfgOriginal?.task_explainer_api_key_set ? "••••••••(unchanged)" : "Paste your API key"}
+                value={cfgDraft.task_explainer_api_key}
+                onChange={(e) => setCfgDraft({ ...cfgDraft, task_explainer_api_key: e.target.value })}
+                disabled={cfgSaving}
+                style={{ width: 280, maxWidth: "50%" }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowExplainerKey((v) => !v)}
+                style={{ padding: "4px 8px", fontSize: 11, background: "transparent", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--text-secondary)" }}
+              >
+                {showExplainerKey ? "Hide" : "Show"}
+              </button>
+            </div>
+          </div>
+
+          <div className="toggle-row">
+            <div className="toggle-label">
+              <span>Automation API Key (optional)</span>
+              <span>{cfgOriginal?.automation_llm_api_key_set ? "Key is set" : "Uses the LLM key above if empty"}</span>
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type={showAutomationKey ? "text" : "password"}
+                placeholder={cfgOriginal?.automation_llm_api_key_set ? "••••••••(unchanged)" : "(uses LLM key above)"}
+                value={cfgDraft.automation_llm_api_key}
+                onChange={(e) => setCfgDraft({ ...cfgDraft, automation_llm_api_key: e.target.value })}
+                disabled={cfgSaving}
+                style={{ width: 280, maxWidth: "50%" }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowAutomationKey((v) => !v)}
+                style={{ padding: "4px 8px", fontSize: 11, background: "transparent", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--text-secondary)" }}
+              >
+                {showAutomationKey ? "Hide" : "Show"}
+              </button>
+            </div>
+          </div>
+
+          <div className="toggle-row">
+            <div className="toggle-label">
+              <span>Chrome Path</span>
+              <span>Path to Chrome for browser automations</span>
+            </div>
+            <input
+              type="text"
+              placeholder="C:\Program Files\Google\Chrome\Application\chrome.exe"
+              value={cfgDraft.chrome_path}
+              onChange={(e) => setCfgDraft({ ...cfgDraft, chrome_path: e.target.value })}
+              disabled={cfgSaving}
+              style={{ width: 360, maxWidth: "55%" }}
+            />
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            <button className="btn-primary btn-sm" onClick={onSaveConfig} disabled={cfgSaving || !cfgDirty}>
+              {cfgSaving ? "Saving..." : "Save Keys"}
+            </button>
+            <button
+              className="btn-sm"
+              onClick={() => cfgOriginal && (setCfgDraft(configFromServer(cfgOriginal)), setCfgNotice(""), setCfgError(""))}
+              disabled={cfgSaving || !cfgDirty}
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading || !draft ? (
         <div style={{ display: "grid", gap: 16 }}>

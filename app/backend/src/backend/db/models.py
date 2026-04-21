@@ -122,7 +122,23 @@ class ObserverSettings(Base):
     privacy_mode: Mapped[bool] = mapped_column(default=False)
     screenshots_enabled: Mapped[bool] = mapped_column(default=True)
     screenshot_every_seconds: Mapped[int] = mapped_column(default=30)
-    # When true, observer will drop logs immediately instead of sending them.
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class UserConfig(Base):
+    """Single-row table (id=1) for user-specific secrets and paths.
+
+    Only values that vary per user belong here (API keys, local paths).
+    App-level defaults (provider, endpoint, model) stay in .env.
+    """
+    __tablename__ = "user_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+
+    task_explainer_api_key: Mapped[str] = mapped_column(String(512), default="")
+    automation_llm_api_key: Mapped[str] = mapped_column(String(512), default="")
+    chrome_path: Mapped[str] = mapped_column(String(512), default="")
+
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

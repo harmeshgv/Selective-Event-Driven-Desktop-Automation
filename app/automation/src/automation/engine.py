@@ -26,7 +26,24 @@ _CHROME_CANDIDATES = [
 ]
 
 
+def _db_chrome_path() -> str:
+    """Try to read CHROME_PATH from user config in the database."""
+    try:
+        from backend.db.session import SessionLocal
+        from backend.api.routes.user_config import get_user_config_dict
+        db = SessionLocal()
+        try:
+            return get_user_config_dict(db).get("CHROME_PATH", "")
+        finally:
+            db.close()
+    except Exception:
+        return ""
+
+
 def _find_chrome() -> str:
+    db_path = _db_chrome_path()
+    if db_path and os.path.isfile(db_path):
+        return db_path
     env_path = os.getenv("CHROME_PATH", "").strip()
     if env_path and os.path.isfile(env_path):
         return env_path

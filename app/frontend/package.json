@@ -2,6 +2,8 @@
   "name": "flowpilot-frontend",
   "private": true,
   "version": "0.1.0",
+  "description": "FlowPilot Desktop Assistant",
+  "author": "FlowPilot",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -11,7 +13,8 @@
     "desktop": "npm run dev",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "desktop:prod": "npm run build && electron ."
+    "desktop:prod": "npm run build && electron .",
+    "dist": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --config electron-builder.yml"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -25,9 +28,9 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.0.0",
     "electron": "^37.2.6",
+    "electron-builder": "^26.8.1",
     "typescript": "^5.5.4",
     "vite": "^5.4.1",
     "wait-on": "^9.0.1"
   }
 }
-

@@ -2,9 +2,28 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List
 
 from pydantic_settings import BaseSettings
+
+
+def _find_env_file() -> str:
+    """Locate the .env file — check repo root first, then CWD."""
+    here = Path(__file__).resolve().parent
+    for ancestor in [here] + list(here.parents):
+        candidate = ancestor / ".env"
+        if candidate.is_file():
+            return str(candidate)
+        if (ancestor / "docker-compose.yml").exists():
+            env_at_root = ancestor / ".env"
+            if env_at_root.is_file():
+                return str(env_at_root)
+            break
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.is_file():
+        return str(cwd_env)
+    return ".env"
 
 
 class Settings(BaseSettings):
@@ -15,7 +34,8 @@ class Settings(BaseSettings):
     default_screenshots_enabled: bool = False
 
     class Config:
-        env_file = ".env"
+        env_file = _find_env_file()
+        extra = "ignore"
 
 
 @dataclass(frozen=True)

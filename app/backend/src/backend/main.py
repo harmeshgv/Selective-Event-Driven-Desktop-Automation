@@ -10,6 +10,7 @@ from backend.api.routes.observer_settings import router as observer_settings_rou
 from backend.api.routes.logs import router as logs_router
 from backend.api.routes.run import router as run_router
 from backend.api.routes.tasks import router as tasks_router
+from backend.api.routes.user_config import router as user_config_router
 from backend.core.config import get_config
 from backend.db.models import Base
 from backend.db.session import engine
@@ -49,14 +50,33 @@ def on_startup() -> None:
     Base.metadata.create_all(bind=engine)
     _run_migrations(engine)
     log.info("DB tables ensured")
-    # Seed demo content for immediate preview/run testing.
     from backend.db.session import SessionLocal
 
     db = SessionLocal()
     try:
         seed_sample_automation(db)
+        _ensure_tracking_enabled(db)
     finally:
         db.close()
+
+
+def _ensure_tracking_enabled(db) -> None:
+    """Auto-enable tracking on every startup so the observer records immediately."""
+    from backend.db.models import ObserverSettings
+    row = db.query(ObserverSettings).filter(ObserverSettings.id == 1).one_or_none()
+    if row is None:
+        row = ObserverSettings(
+            id=1,
+            tracking_enabled=True,
+            privacy_mode=cfg.default_privacy_mode,
+            screenshots_enabled=cfg.default_screenshots_enabled,
+            screenshot_every_seconds=30,
+        )
+        db.add(row)
+    else:
+        row.tracking_enabled = True
+    db.commit()
+    log.info("Observer tracking auto-enabled")
 
 
 @app.get("/health")
@@ -69,4 +89,5 @@ app.include_router(tasks_router)
 app.include_router(automations_router)
 app.include_router(run_router)
 app.include_router(observer_settings_router)
+app.include_router(user_config_router)
 
